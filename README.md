@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Vitrina Monitor
 
-## Getting Started
+Мінімалістична адмін-панель для моніторингу сайтів: статус, оплата, блокування, історія перевірок і сповіщення в Telegram.
 
-First, run the development server:
+## Швидкий старт
+
+1. Скопіюй `.env.example` → `.env.local` і заповни значення.
+2. У Supabase SQL Editor виконай `supabase/schema.sql`.
+3. Напиши боту в Telegram будь-яке повідомлення, потім отримай `chat_id`:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getUpdates"
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Додай `TELEGRAM_CHAT_ID` у `.env.local`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+4. Запуск:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm install
+npm run dev
+```
 
-## Learn More
+Відкрий [http://localhost:3000](http://localhost:3000).
 
-To learn more about Next.js, take a look at the following resources:
+## Можливості
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Додавання / видалення сайтів
+- Автоперевірка доступності кожні 10 хвилин (серверний таймер + Vercel Cron)
+- Ручна зміна статусу з причиною
+- Telegram-сповіщення при зміні статусу на проблемний
+- Cron: `vercel.json` → `GET /api/check` кожні 10 хв
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Статуси
 
-## Deploy on Vercel
+| Статус | Значення |
+|---|---|
+| `online` | Сайт працює |
+| `offline` | Немає відповіді / таймаут |
+| `payment_required` | HTTP 402 або текст про оплату |
+| `blocked` | HTTP 403 або текст про блокування |
+| `error` | 4xx/5xx та інші помилки |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## API
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `GET/POST /api/sites` — список / додати
+- `PATCH/DELETE /api/sites/:id` — оновити / видалити
+- `GET /api/sites/:id/checks` — історія перевірок
+- `POST /api/check` — ручна перевірка (`{ "siteIds": ["..."] }` опційно)
+- `GET /api/check` — cron (з `Authorization: Bearer CRON_SECRET`)
