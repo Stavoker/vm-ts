@@ -96,7 +96,7 @@ export async function checkSiteUrl(url: string): Promise<CheckResult> {
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), 60_000);
 
     const response = await fetch(url, {
       method: "GET",
@@ -168,7 +168,7 @@ export async function checkSiteUrl(url: string): Promise<CheckResult> {
       http_status: null,
       response_time_ms: responseTime,
       status_reason: message.includes("abort")
-        ? "Таймаут ответа (15с)"
+        ? "Таймаут ответа (1 мин)"
         : message,
     };
   }
