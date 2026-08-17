@@ -7,9 +7,12 @@ export async function register() {
     return;
   }
 
-  const { CHECK_INTERVAL_MS } = await import("./src/lib/constants");
+  const { CHECK_INTERVAL_MS, REMINDER_INTERVAL_MS } = await import(
+    "./src/lib/constants"
+  );
   const { runSiteChecks } = await import("./src/lib/check-sites");
   const { pollTelegramUpdates } = await import("./src/lib/telegram");
+  const { runPaymentReminders } = await import("./src/lib/reminders");
 
   let checking = false;
   let telegramOffset = 0;
@@ -80,6 +83,26 @@ export async function register() {
     void tickTelegram();
   }, 2000);
 
+  async function tickReminders(reason: string) {
+    try {
+      console.log(`[reminders] started (${reason})`);
+      const summary = await runPaymentReminders();
+      console.log(
+        `[reminders] done: synced=${summary.synced} notified=${summary.notified}`,
+      );
+    } catch (error) {
+      console.error("[reminders] failed:", error);
+    }
+  }
+
+  setTimeout(() => {
+    void tickReminders("startup");
+  }, 20_000);
+  setInterval(() => {
+    void tickReminders("hourly");
+  }, REMINDER_INTERVAL_MS);
+
   console.log("[monitor] auto-check enabled: every 10 minutes");
   console.log("[telegram] /start listener enabled: every 2 seconds");
+  console.log("[reminders] Notion payments: hourly, 7 days before due date");
 }

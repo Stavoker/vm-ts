@@ -3,7 +3,7 @@
 import type { SiteStatus } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
 
-export type NavView = "sites" | "add" | "telegram" | SiteStatus;
+export type NavView = "sites" | "add" | "telegram" | "payments" | SiteStatus;
 
 type Props = {
   view: NavView;
@@ -82,6 +82,13 @@ export function Sidebar({
             className={navClass(view === "telegram")}
           >
             Telegram
+          </button>
+          <button
+            type="button"
+            onClick={() => go("payments")}
+            className={navClass(view === "payments")}
+          >
+            Оплаты Notion
           </button>
 
           <p className="mb-2 mt-6 px-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">

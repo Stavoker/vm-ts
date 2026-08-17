@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AddSiteForm } from "@/components/add-site-form";
 import { Sidebar, type NavView } from "@/components/sidebar";
 import { SitesTable } from "@/components/sites-table";
+import { PaymentsPanel } from "@/components/payments-panel";
 import { TelegramPanel } from "@/components/telegram-panel";
 import { CHECK_INTERVAL_MS } from "@/lib/constants";
 import type { Site, SiteStatus } from "@/lib/types";
@@ -126,7 +127,9 @@ export function Dashboard() {
   }, [sites]);
 
   const visibleSites = useMemo(() => {
-    if (view === "sites" || view === "add") return sites;
+    if (view === "sites" || view === "add" || view === "telegram" || view === "payments") {
+      return sites;
+    }
     return sites.filter((site) => site.status === view);
   }, [sites, view]);
 
@@ -135,9 +138,11 @@ export function Dashboard() {
       ? "Добавить сайт"
       : view === "telegram"
         ? "Telegram"
-        : view === "sites"
-          ? "Все сайты"
-          : STATUS_LABELS[view];
+        : view === "payments"
+          ? "Оплаты Notion"
+          : view === "sites"
+            ? "Все сайты"
+            : STATUS_LABELS[view];
 
   const countdown = formatCountdown(nextCheckAt - now);
   const lastCheckLabel = lastCheckAt
@@ -180,7 +185,7 @@ export function Dashboard() {
                   ? `Последняя: ${lastCheckLabel} · следующая через ${countdown}`
                   : `Следующая проверка через ${countdown}`}
             </span>
-            {view !== "add" && view !== "telegram" ? (
+            {view !== "add" && view !== "telegram" && view !== "payments" ? (
               <button
                 type="button"
                 onClick={() => void checkAll("manual")}
@@ -205,6 +210,8 @@ export function Dashboard() {
             />
           ) : view === "telegram" ? (
             <TelegramPanel />
+          ) : view === "payments" ? (
+            <PaymentsPanel />
           ) : loading ? (
             <p className="text-sm text-gray-500">Загрузка…</p>
           ) : (
@@ -214,6 +221,7 @@ export function Dashboard() {
           {!loading &&
           view !== "add" &&
           view !== "telegram" &&
+          view !== "payments" &&
           isStatusView(view) ? (
             <p className="mt-3 text-xs text-gray-500">
               Показано {visibleSites.length} из {sites.length}

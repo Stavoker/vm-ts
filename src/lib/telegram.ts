@@ -2,17 +2,30 @@ import { createServerSupabase } from "@/lib/supabase";
 import type { Site, SiteStatus } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
 
+export type TelegramChat = {
+  id: number;
+  username?: string;
+  first_name?: string;
+  type: string;
+};
+
+export type TelegramCallbackQuery = {
+  id: string;
+  data?: string;
+  message?: {
+    message_id: number;
+    chat: TelegramChat;
+    text?: string;
+  };
+};
+
 export type TelegramUpdate = {
   update_id: number;
   message?: {
     text?: string;
-    chat: {
-      id: number;
-      username?: string;
-      first_name?: string;
-      type: string;
-    };
+    chat: TelegramChat;
   };
+  callback_query?: TelegramCallbackQuery;
 };
 
 function escapeHtml(value: string): string {
@@ -26,9 +39,14 @@ function getBotToken(): string | null {
   return process.env.TELEGRAM_BOT_TOKEN || null;
 }
 
+type SendOptions = {
+  replyMarkup?: unknown;
+};
+
 export async function sendTelegramToChat(
   chatId: string | number,
   text: string,
+  options?: SendOptions,
 ): Promise<boolean> {
   const token = getBotToken();
   if (!token) {
@@ -46,6 +64,7 @@ export async function sendTelegramToChat(
         text,
         parse_mode: "HTML",
         disable_web_page_preview: true,
+        ...(options?.replyMarkup ? { reply_markup: options.replyMarkup } : {}),
       }),
     },
   );
@@ -80,7 +99,7 @@ export async function saveTelegramChat(input: {
   }
 }
 
-async function listChatIds(): Promise<string[]> {
+export async function listChatIds(): Promise<string[]> {
   const ids = new Set<string>();
 
   if (process.env.TELEGRAM_CHAT_ID) {
@@ -110,7 +129,10 @@ async function listChatIds(): Promise<string[]> {
   return [...ids];
 }
 
-export async function sendTelegramMessage(text: string): Promise<boolean> {
+export async function sendTelegramMessage(
+  text: string,
+  options?: SendOptions,
+): Promise<boolean> {
   const chatIds = await listChatIds();
   if (chatIds.length === 0) {
     console.warn(
@@ -120,9 +142,45 @@ export async function sendTelegramMessage(text: string): Promise<boolean> {
   }
 
   const results = await Promise.all(
-    chatIds.map((chatId) => sendTelegramToChat(chatId, text)),
+    chatIds.map((chatId) => sendTelegramToChat(chatId, text, options)),
   );
   return results.some(Boolean);
+}
+
+export async function answerTelegramCallback(
+  callbackId: string,
+  text?: string,
+): Promise<void> {
+  const token = getBotToken();
+  if (!token) return;
+  await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      callback_query_id: callbackId,
+      text: text || undefined,
+    }),
+  });
+}
+
+export async function editTelegramMessage(
+  chatId: string | number,
+  messageId: number,
+  text: string,
+): Promise<void> {
+  const token = getBotToken();
+  if (!token) return;
+  await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    }),
+  });
 }
 
 export async function activateTelegramChat(update: TelegramUpdate) {
@@ -178,6 +236,11 @@ export async function activateTelegramChat(update: TelegramUpdate) {
 }
 
 export async function processTelegramUpdate(update: TelegramUpdate) {
+  if (update.callback_query) {
+    const { handleReminderCallback } = await import("@/lib/reminders");
+    await handleReminderCallback(update.callback_query);
+    return true;
+  }
   return activateTelegramChat(update);
 }
 
@@ -189,7 +252,9 @@ export async function pollTelegramUpdates(offset: number): Promise<{
   if (!token) return { offset, activated: 0 };
 
   const response = await fetch(
-    `https://api.telegram.org/bot${token}/getUpdates?timeout=0&offset=${offset}`,
+    `https://api.telegram.org/bot${token}/getUpdates?timeout=0&offset=${offset}&allowed_updates=${encodeURIComponent(
+      JSON.stringify(["message", "callback_query"]),
+    )}`,
     { cache: "no-store" },
   );
 
