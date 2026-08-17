@@ -73,7 +73,8 @@ function domainFromEmails(raw: string | null): string | null {
       ),
     ),
   ];
-  return domains[0] || null;
+  if (domains.length > 0) return domains.join(", ");
+  return raw.replace(/\s+/g, " ").trim() || null;
 }
 
 async function queryDatabase(databaseId: string): Promise<NotionPage[]> {
@@ -114,7 +115,6 @@ function mapPage(
 ): NotionPaymentItem | null {
   const properties = page.properties || {};
   const dueDate = getDate(properties, ["Істекає", "Истекает", "Expires"]);
-  if (!dueDate) return null;
 
   const company =
     getText(properties, ["Назва компанії", "Company name", "Name"]) ||

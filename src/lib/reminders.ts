@@ -24,7 +24,8 @@ function todayUtc(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function daysUntil(dueDate: string): number {
+export function daysUntil(dueDate: string | null): number | null {
+  if (!dueDate) return null;
   const today = todayUtc();
   const start = Date.parse(`${today}T00:00:00Z`);
   const due = Date.parse(`${dueDate}T00:00:00Z`);
@@ -50,11 +51,13 @@ export function buildReminderText(
 ) {
   const left = daysUntil(item.due_date);
   const when =
-    left > 0
-      ? `осталось ${left} дн.`
-      : left === 0
-        ? "сегодня"
-        : `просрочено на ${Math.abs(left)} дн.`;
+    left == null
+      ? "дата не указана"
+      : left > 0
+        ? `осталось ${left} дн.`
+        : left === 0
+          ? "сегодня"
+          : `просрочено на ${Math.abs(left)} дн.`;
 
   return [
     `💳 <b>Напоминание об оплате</b>`,
@@ -62,7 +65,7 @@ export function buildReminderText(
     `Компания: <b>${escapeHtml(item.company)}</b>`,
     `${kindLabel(item.kind)}: <b>${escapeHtml(item.target || "—")}</b>`,
     `Оплатить: <b>${escapeHtml(item.pay_for || "—")}</b>`,
-    `До: <b>${formatDate(item.due_date)}</b> (${when})`,
+    `До: <b>${item.due_date ? formatDate(item.due_date) : "—"}</b> (${when})`,
     extra || "",
   ]
     .filter((line) => line !== "")
@@ -82,7 +85,9 @@ function buttonsFor(id: string) {
 
 function shouldNotify(reminder: PaymentReminder): boolean {
   if (reminder.status === "payed") return false;
-  if (daysUntil(reminder.due_date) > REMINDER_DAYS_BEFORE) return false;
+  if (!reminder.due_date) return false;
+  const left = daysUntil(reminder.due_date);
+  if (left == null || left > REMINDER_DAYS_BEFORE) return false;
   return !notifiedToday(reminder.last_notified_at);
 }
 
@@ -91,7 +96,7 @@ export async function listPaymentReminders(): Promise<PaymentReminder[]> {
   const { data, error } = await supabase
     .from("payment_reminders")
     .select("*")
-    .order("due_date", { ascending: true });
+    .order("due_date", { ascending: true, nullsFirst: false });
 
   if (error) throw new Error(error.message);
   return (data || []) as PaymentReminder[];
@@ -119,17 +124,36 @@ export async function setReminderStatus(
 
 async function upsertFromNotion(items: NotionPaymentItem[]) {
   const supabase = createServerSupabase();
-  const rows = items.map((item) => ({
-    notion_page_id: item.pageId,
-    kind: item.kind,
-    company: item.company,
-    target: item.target,
-    pay_for: item.payFor,
-    due_date: item.dueDate,
-  }));
+  const { data: existing, error: readError } = await supabase
+    .from("payment_reminders")
+    .select("notion_page_id, due_date, status");
+  if (readError) throw new Error(readError.message);
+
+  const previous = new Map(
+    (existing || []).map((row) => [
+      String(row.notion_page_id),
+      { due_date: row.due_date as string | null, status: row.status as ReminderStatus },
+    ]),
+  );
+
+  const rows = items.map((item) => {
+    const prev = previous.get(item.pageId);
+    const dateChanged = Boolean(prev && prev.due_date !== item.dueDate);
+    return {
+      notion_page_id: item.pageId,
+      kind: item.kind,
+      company: item.company,
+      target: item.target,
+      pay_for: item.payFor,
+      due_date: item.dueDate,
+      ...(dateChanged
+        ? { status: "pending" as const, last_notified_at: null, payed_at: null }
+        : {}),
+    };
+  });
 
   const { error } = await supabase.from("payment_reminders").upsert(rows, {
-    onConflict: "notion_page_id,due_date",
+    onConflict: "notion_page_id",
     ignoreDuplicates: false,
   });
 

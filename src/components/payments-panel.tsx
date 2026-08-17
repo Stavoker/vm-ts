@@ -90,8 +90,9 @@ export function PaymentsPanel() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-xl text-sm text-gray-600">
-          Напоминания из Notion за 7 дней до даты в колонке «Істекає». Later —
-          каждый день, Payed — стоп до новой даты в Notion.
+          Напоминания из Notion за 7 дней до даты в колонке «Істекає». Подгружаются
+          все строки, даже без даты. Later — каждый день, Payed — стоп до новой
+          даты в Notion.
         </p>
         <button
           type="button"
@@ -170,13 +171,15 @@ export function PaymentsPanel() {
                       <td className="px-4 py-3">{item.target || "—"}</td>
                       <td className="px-4 py-3">{item.pay_for || "—"}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        {formatDate(item.due_date)}
+                        {item.due_date ? formatDate(item.due_date) : "—"}
                         <div className="text-xs text-gray-500">
-                          {left > 0
-                            ? `${left} дн.`
-                            : left === 0
-                              ? "сегодня"
-                              : `просрочено ${Math.abs(left)}`}
+                          {left == null
+                            ? "нет даты в Notion"
+                            : left > 0
+                              ? `${left} дн.`
+                              : left === 0
+                                ? "сегодня"
+                                : `просрочено ${Math.abs(left)}`}
                         </div>
                       </td>
                       <td className="px-4 py-3">

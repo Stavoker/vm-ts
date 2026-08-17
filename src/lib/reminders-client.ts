@@ -1,4 +1,5 @@
-export function daysUntil(dueDate: string): number {
+export function daysUntil(dueDate: string | null): number | null {
+  if (!dueDate) return null;
   const today = new Date().toISOString().slice(0, 10);
   const start = Date.parse(`${today}T00:00:00Z`);
   const due = Date.parse(`${dueDate}T00:00:00Z`);
