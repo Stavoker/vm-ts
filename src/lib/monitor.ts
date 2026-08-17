@@ -1,3 +1,8 @@
+import {
+  checkDomainHealth,
+  classifyExpiredDomainPage,
+  classifyParkingRedirect,
+} from "@/lib/domain-check";
 import type { CheckResult, SiteStatus } from "@/lib/types";
 
 const PAYMENT_PATTERNS = [
@@ -93,6 +98,13 @@ function classifyFromBody(
 
 export async function checkSiteUrl(url: string): Promise<CheckResult> {
   const started = Date.now();
+  const domainIssue = await checkDomainHealth(url);
+  if (domainIssue) {
+    return {
+      ...domainIssue,
+      response_time_ms: Date.now() - started,
+    };
+  }
 
   try {
     const controller = new AbortController();
@@ -123,6 +135,24 @@ export async function checkSiteUrl(url: string): Promise<CheckResult> {
       !contentType
     ) {
       body = (await response.text()).slice(0, 80_000);
+    }
+
+    const parkingRedirect = classifyParkingRedirect(url, response.url);
+    if (parkingRedirect) {
+      return {
+        ...parkingRedirect,
+        http_status: httpStatus,
+        response_time_ms: responseTime,
+      };
+    }
+
+    const expiredPage = classifyExpiredDomainPage(body);
+    if (expiredPage) {
+      return {
+        ...expiredPage,
+        http_status: httpStatus,
+        response_time_ms: responseTime,
+      };
     }
 
     const classified = classifyFromBody(body, httpStatus);
