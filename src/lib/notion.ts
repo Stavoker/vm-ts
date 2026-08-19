@@ -17,6 +17,11 @@ type NotionPage = {
   properties?: Record<string, NotionProperty>;
 };
 
+type NotionSource = {
+  databaseId: string;
+  kind: ReminderKind;
+};
+
 function notionHeaders() {
   const token = process.env.NOTION_TOKEN;
   if (!token) throw new Error("NOTION_TOKEN is missing");
@@ -75,6 +80,24 @@ function domainFromEmails(raw: string | null): string | null {
   ];
   if (domains.length > 0) return domains.join(", ");
   return raw.replace(/\s+/g, " ").trim() || null;
+}
+
+function parseDatabaseId(value: string): string {
+  return value.trim().replaceAll("-", "");
+}
+
+function parseExtraSources(raw: string | undefined): NotionSource[] {
+  if (!raw) return [];
+
+  return raw
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const [id, explicitKind] = part.split(":").map((value) => value.trim());
+      const kind: ReminderKind = explicitKind === "phone" ? "phone" : "domain";
+      return { databaseId: parseDatabaseId(id), kind };
+    });
 }
 
 async function queryDatabase(databaseId: string): Promise<NotionPage[]> {
@@ -150,13 +173,20 @@ export async function fetchNotionPayments(): Promise<NotionPaymentItem[]> {
     throw new Error("NOTION_PHONES_DATABASE_ID / NOTION_DOMAINS_DATABASE_ID missing");
   }
 
-  const [phonePages, domainPages] = await Promise.all([
-    queryDatabase(phonesId),
-    queryDatabase(domainsId),
-  ]);
+  const sources: NotionSource[] = [
+    { databaseId: parseDatabaseId(phonesId), kind: "phone" },
+    { databaseId: parseDatabaseId(domainsId), kind: "domain" },
+    ...parseExtraSources(process.env.NOTION_EXTRA_DATABASE_IDS),
+  ];
 
-  return [
-    ...phonePages.map((page) => mapPage(page, "phone")),
-    ...domainPages.map((page) => mapPage(page, "domain")),
-  ].filter((item): item is NotionPaymentItem => Boolean(item));
+  const batches = await Promise.all(
+    sources.map(async (source) => ({
+      source,
+      pages: await queryDatabase(source.databaseId),
+    })),
+  );
+
+  return batches
+    .flatMap(({ source, pages }) => pages.map((page) => mapPage(page, source.kind)))
+    .filter((item): item is NotionPaymentItem => Boolean(item));
 }
