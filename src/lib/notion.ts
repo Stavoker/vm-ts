@@ -132,6 +132,63 @@ async function queryDatabase(databaseId: string): Promise<NotionPage[]> {
   return pages;
 }
 
+function isPageInsteadOfDatabaseError(message?: string): boolean {
+  if (!message) return false;
+  const text = message.toLowerCase();
+  return text.includes("is a page, not a database");
+}
+
+async function findChildDatabaseId(pageId: string): Promise<string | null> {
+  let cursor: string | undefined;
+
+  do {
+    const response = await fetch(
+      `https://api.notion.com/v1/blocks/${pageId}/children?page_size=100${
+        cursor ? `&start_cursor=${encodeURIComponent(cursor)}` : ""
+      }`,
+      {
+        method: "GET",
+        headers: notionHeaders(),
+      },
+    );
+    const data = (await response.json()) as {
+      results?: Array<{ id?: string; type?: string }>;
+      next_cursor?: string | null;
+      has_more?: boolean;
+      message?: string;
+    };
+    if (!response.ok) {
+      throw new Error(data.message || `Notion block query failed (${response.status})`);
+    }
+
+    const childDb = (data.results || []).find((block) => block.type === "child_database");
+    if (childDb?.id) return parseDatabaseId(childDb.id);
+
+    cursor = data.has_more && data.next_cursor ? data.next_cursor : undefined;
+  } while (cursor);
+
+  return null;
+}
+
+async function querySourceDatabase(sourceId: string): Promise<NotionPage[]> {
+  try {
+    return await queryDatabase(sourceId);
+  } catch (error) {
+    if (!(error instanceof Error) || !isPageInsteadOfDatabaseError(error.message)) {
+      throw error;
+    }
+  }
+
+  const childDatabaseId = await findChildDatabaseId(sourceId);
+  if (!childDatabaseId) {
+    throw new Error(
+      `Notion ID ${sourceId} is a page and does not contain a child database. Open the database itself in Notion and use its database ID.`,
+    );
+  }
+
+  return queryDatabase(childDatabaseId);
+}
+
 function mapPage(
   page: NotionPage,
   kind: ReminderKind,
@@ -182,7 +239,7 @@ export async function fetchNotionPayments(): Promise<NotionPaymentItem[]> {
   const batches = await Promise.all(
     sources.map(async (source) => ({
       source,
-      pages: await queryDatabase(source.databaseId),
+      pages: await querySourceDatabase(source.databaseId),
     })),
   );
 
