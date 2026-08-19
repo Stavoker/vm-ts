@@ -1,4 +1,4 @@
-export type ReminderKind = "phone" | "domain";
+export type ReminderKind = "phone" | "domain" | "service";
 export type ReminderStatus = "pending" | "later" | "payed";
 
 export type PaymentReminder = {

@@ -7,7 +7,7 @@ begin
     join pg_namespace n on n.oid = t.typnamespace
     where t.typname = 'reminder_kind' and n.nspname = 'public'
   ) then
-    create type public.reminder_kind as enum ('phone', 'domain');
+    create type public.reminder_kind as enum ('phone', 'domain', 'service');
   end if;
 
   if not exists (
@@ -16,6 +16,21 @@ begin
     where t.typname = 'reminder_status' and n.nspname = 'public'
   ) then
     create type public.reminder_status as enum ('pending', 'later', 'payed');
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_enum e
+    join pg_type t on t.oid = e.enumtypid
+    join pg_namespace n on n.oid = t.typnamespace
+    where n.nspname = 'public'
+      and t.typname = 'reminder_kind'
+      and e.enumlabel = 'service'
+  ) then
+    alter type public.reminder_kind add value 'service';
   end if;
 end $$;
 

@@ -42,7 +42,9 @@ function notifiedToday(value: string | null): boolean {
 }
 
 function kindLabel(kind: PaymentReminder["kind"] | NotionPaymentItem["kind"]) {
-  return kind === "domain" ? "Домен" : "Телефон";
+  if (kind === "domain") return "Домен";
+  if (kind === "service") return "Сервис";
+  return "Телефон";
 }
 
 export function buildReminderText(

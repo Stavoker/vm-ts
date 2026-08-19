@@ -18,6 +18,7 @@ const STATUS_LABEL: Record<ReminderStatus, string> = {
 const KIND_LABEL: Record<ReminderKind, string> = {
   domain: "Домен",
   phone: "Телефон",
+  service: "Сервис",
 };
 
 export function PaymentsPanel() {
@@ -110,6 +111,7 @@ export function PaymentsPanel() {
             ["all", "Все"],
             ["domain", "Домены"],
             ["phone", "Телефоны"],
+            ["service", "Сервисы"],
             ["later", "Later"],
             ["payed", "Payed"],
           ] as const

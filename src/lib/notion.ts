@@ -95,7 +95,14 @@ function parseExtraSources(raw: string | undefined): NotionSource[] {
     .filter(Boolean)
     .map((part) => {
       const [id, explicitKind] = part.split(":").map((value) => value.trim());
-      const kind: ReminderKind = explicitKind === "phone" ? "phone" : "domain";
+      const kind: ReminderKind =
+        explicitKind === "phone"
+          ? "phone"
+          : explicitKind === "domain"
+            ? "domain"
+            : explicitKind === "service"
+              ? "service"
+              : "service";
       return { databaseId: parseDatabaseId(id), kind };
     });
 }
@@ -194,7 +201,14 @@ function mapPage(
   kind: ReminderKind,
 ): NotionPaymentItem | null {
   const properties = page.properties || {};
-  const dueDate = getDate(properties, ["Істекає", "Истекает", "Expires"]);
+  const dueDate = getDate(properties, [
+    "Істекає",
+    "Истекает",
+    "Expires",
+    "Оплатить до",
+    "Оплатити до",
+    "Due date",
+  ]);
 
   const company =
     getText(properties, ["Назва компанії", "Company name", "Name"]) ||
@@ -209,6 +223,33 @@ function mapPage(
       company,
       target: domainFromEmails(emails),
       payFor: getText(properties, ["Price"]),
+      dueDate,
+    };
+  }
+
+  if (kind === "service") {
+    const provider = getText(properties, [
+      "Провайдер",
+      "Provider",
+      "Сервис",
+      "Сервіс",
+      "Service",
+    ]);
+    const safeLink = getText(properties, ["Сейф", "Safe", "Vault", "Login"]);
+    const target = provider || safeLink;
+
+    return {
+      pageId: page.id.replaceAll("-", ""),
+      kind,
+      company,
+      target,
+      payFor: getText(properties, [
+        "Метод оплаты",
+        "Метод оплати",
+        "Price",
+        "Оплата",
+        "Cost",
+      ]),
       dueDate,
     };
   }
