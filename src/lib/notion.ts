@@ -8,6 +8,7 @@ type NotionProperty = {
   title?: NotionRichText[];
   rich_text?: NotionRichText[];
   phone_number?: string | null;
+  url?: string | null;
   date?: { start?: string | null } | null;
   select?: { name?: string } | null;
 };
@@ -52,6 +53,7 @@ function getText(
     if (!prop) continue;
     if (prop.type === "rich_text") return plainText(prop.rich_text) || null;
     if (prop.type === "phone_number") return prop.phone_number || null;
+    if (prop.type === "url") return prop.url || null;
     if (prop.type === "title") return plainText(prop.title) || null;
     if (prop.type === "select") return prop.select?.name || null;
   }
@@ -206,6 +208,7 @@ function mapPage(
     "Истекает",
     "Expires",
     "Оплатить до",
+    "Оплатить До",
     "Оплатити до",
     "Due date",
   ]);
