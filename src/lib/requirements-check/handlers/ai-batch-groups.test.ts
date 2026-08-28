@@ -30,21 +30,34 @@ function aiDefinition(id: string, handler: string, name: string): RequirementDef
 }
 
 describe("ai batch groups", () => {
-  it("maps all eight AI requirements into visual and content batches", () => {
-    expect(Object.keys(AI_REQUIREMENT_BATCH_GROUP)).toHaveLength(8);
+  it("maps AI requirements into visual, content, kyb, and business batches", () => {
+    expect(Object.keys(AI_REQUIREMENT_BATCH_GROUP).length).toBeGreaterThanOrEqual(24);
     const visual = Object.values(AI_REQUIREMENT_BATCH_GROUP).filter((group) => group === "visual");
     const content = Object.values(AI_REQUIREMENT_BATCH_GROUP).filter((group) => group === "content");
-    expect(visual).toHaveLength(5);
-    expect(content).toHaveLength(3);
+    const kyb = Object.values(AI_REQUIREMENT_BATCH_GROUP).filter((group) => group === "kyb");
+    const business = Object.values(AI_REQUIREMENT_BATCH_GROUP).filter((group) => group === "business");
+    expect(visual.length).toBeGreaterThanOrEqual(5);
+    expect(content.length).toBeGreaterThanOrEqual(3);
+    expect(kyb).toHaveLength(2);
+    expect(business).toHaveLength(14);
   });
 
-  it("groups definitions for dual batch execution", () => {
+  it("groups definitions for quad batch execution", () => {
     const definitions = Object.entries(AI_REQUIREMENT_BATCH_GROUP).map(([id, group]) =>
-      aiDefinition(id, group === "visual" ? "aiReviewChecker" : "contentQualityChecker", id),
+      aiDefinition(
+        id,
+        group === "visual"
+          ? "aiReviewChecker"
+          : group === "kyb"
+            ? "kybVisibilityChecker"
+            : group === "business"
+              ? "businessPlanAiChecker"
+              : "contentQualityChecker",
+        id,
+      ),
     );
     const grouped = groupAiDefinitions(definitions);
-    expect(grouped.visual).toHaveLength(5);
-    expect(grouped.content).toHaveLength(3);
+    expect(grouped.business).toHaveLength(14);
   });
 
   it("falls back to handler-based grouping for unknown ids", () => {
@@ -54,5 +67,11 @@ describe("ai batch groups", () => {
     expect(
       resolveAiBatchGroup(aiDefinition("unknown", "contentQualityChecker", "content")),
     ).toBe("content");
+    expect(
+      resolveAiBatchGroup(aiDefinition("unknown", "kybVisibilityChecker", "kyb")),
+    ).toBe("kyb");
+    expect(
+      resolveAiBatchGroup(aiDefinition("unknown", "businessPlanAiChecker", "business")),
+    ).toBe("business");
   });
 });

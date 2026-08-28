@@ -18,7 +18,7 @@ export type AiReviewBatchItem = {
   focusHint?: string;
 };
 
-export type AiReviewBatchGroup = "visual" | "content";
+export type AiReviewBatchGroup = "visual" | "content" | "kyb" | "business";
 
 type AiReviewInput = {
   requirementName: string;
@@ -39,6 +39,45 @@ type RunBatchedAiReviewsInput = {
   htmlExcerptLimit?: number;
 };
 
+const AI_REQUIREMENT_HINTS: Record<string, string> = {
+  tax_country:
+    "Identify tax country, jurisdiction, VAT country, or country of incorporation from legal/footer content.",
+  industry_nature_of_business:
+    "Identify industry, business nature, products, or services from about/legal/homepage content.",
+  business_model_clearly_described:
+    "Check whether the public website explains how the company makes money (SaaS, credits, subscriptions, etc.).",
+  products_services_clearly_described:
+    "Check whether products/services are clearly described on the website.",
+  target_audience_documented:
+    "Check whether target customers or audience are described on the website.",
+  target_countries_business_geography_documented:
+    "Check whether target countries, regions, or business geography are mentioned.",
+  customer_acquisition_marketing_channels_documented:
+    "Check whether marketing or customer acquisition channels are described.",
+  supplier_counterparty_structure_documented:
+    "Check whether suppliers, partners, or counterparties are mentioned if relevant.",
+  business_plan_if_required_by_provider:
+    "Treat a clear public website business description as sufficient; do not require an uploaded PDF.",
+  business_plan_includes_month_year_of_preparation:
+    "PASS if any current date/year on the site suggests active operations; otherwise MANUAL.",
+  business_plan_includes_team_size_roles_and_reporting_lines:
+    "PASS if team/about/company pages mention roles or team structure.",
+  business_plan_includes_first_year_monthly_or_quarterly_finan:
+    "PASS only if financial forecast or revenue projections appear on the site; otherwise MANUAL.",
+  forecast_revenue_is_consistent_with_requested_processing_lim:
+    "PASS if pricing/revenue model on site appears plausible; MANUAL if no numbers.",
+  average_ticket_is_consistent_with_expected_traffic:
+    "PASS if pricing tiers or average purchase/top-up amounts are visible on the site.",
+  marketing_strategy_is_described:
+    "PASS if marketing approach, channels, or go-to-market content is described.",
+  current_project_status_documented_e_g_pre_launch_initial_pha:
+    "PASS if the site indicates live product, beta, launch status, or current phase.",
+  no_low_quality_stock_imagery_images_or_logos:
+    "Use the homepage screenshot to judge whether imagery/logos look low-quality or generic stock.",
+  ensure_all_logos_are_unique_for_each_website_legally_used_an:
+    "Review logos/branding in the screenshot for uniqueness and professional quality.",
+};
+
 const AI_HANDLER_HINTS: Record<string, string> = {
   homepageHeroChecker:
     "Focus on the homepage hero area. Confirm there is one single main image and no carousel/slider with multiple hero images.",
@@ -46,22 +85,32 @@ const AI_HANDLER_HINTS: Record<string, string> = {
     "Review text quality for uniqueness, clarity, and grammar across visible homepage content.",
   websiteSimilarityChecker:
     "No comparison sites are available. Judge whether the site looks template-derived or materially differentiated in structure, text, palette, and tone.",
+  kybVisibilityChecker:
+    "Review legal, footer, about, and contact excerpts for company jurisdiction and business nature.",
+  businessPlanAiChecker:
+    "Review public website pages (homepage, features, pricing, about) as the business plan source. PASS when the topic is clearly described and not placeholder text.",
+  aiReviewChecker:
+    "Use website-visible evidence only. PASS when clearly supported; do not require uploaded documents.",
 };
 
 function buildBatchSystemPrompt(batchGroup: AiReviewBatchGroup): string {
   const evidenceHint =
     batchGroup === "visual"
       ? "Evaluate each requirement using the homepage screenshot and HTML excerpt."
-      : "Evaluate each requirement using the HTML text excerpt only (no screenshot in this batch).";
+      : batchGroup === "kyb"
+        ? "Evaluate each requirement using company/legal/footer page text excerpts."
+        : batchGroup === "business"
+          ? "Evaluate each requirement using public website marketing/about/pricing/features text. Treat the website as the business plan source."
+          : "Evaluate each requirement using the HTML text excerpt only (no screenshot in this batch).";
 
   return [
     "You are a website compliance reviewer for payment-gateway onboarding.",
     evidenceHint,
     "Return strict JSON only:",
     '{"reviews":[{"requirementId":"...","status":"PASS"|"MANUAL"|"FAIL","confidence":0.0-1.0,"explanation":"..."}]}',
-    "Use PASS only when evidence clearly supports compliance.",
-    "Use MANUAL when evidence is insufficient or judgment is subjective.",
-    "Use FAIL only when clear non-compliance is visible.",
+    "Use PASS when the public website clearly supports the requirement and content is not placeholder/lorem ipsum.",
+    "Use MANUAL only when the topic is genuinely absent from the website or requires internal documents not visible online.",
+    "Use FAIL only for clear non-compliance or obvious placeholder/template content.",
     "Include one review object per requirement id provided.",
   ].join("\n");
 }
@@ -142,7 +191,13 @@ export async function runBatchedAiReviews(input: RunBatchedAiReviewsInput): Prom
 
   const includeImage = input.batchGroup === "visual" && Boolean(input.screenshotBase64);
   const model = resolveBatchModel(input.batchGroup, input.model);
-  const excerptLimit = input.htmlExcerptLimit ?? (input.batchGroup === "content" ? 12_000 : 6_000);
+  const excerptLimit =
+    input.htmlExcerptLimit ??
+    (input.batchGroup === "content"
+      ? 16_000
+      : input.batchGroup === "kyb" || input.batchGroup === "business"
+        ? 20_000
+        : 6_000);
   const requirementBlock = input.requirements
     .map(
       (item, index) =>
@@ -264,13 +319,19 @@ export async function runBatchedAiReviews(input: RunBatchedAiReviewsInput): Prom
 export async function runDualBatchedAiReviews(input: {
   websiteUrl: string;
   htmlExcerpt: string;
+  kybHtmlExcerpt?: string;
+  businessHtmlExcerpt?: string;
   screenshotBase64?: string | null;
   visualRequirements: AiReviewBatchItem[];
   contentRequirements: AiReviewBatchItem[];
+  kybRequirements?: AiReviewBatchItem[];
+  businessRequirements?: AiReviewBatchItem[];
 }): Promise<Map<string, AiReviewResponse>> {
   const merged = new Map<string, AiReviewResponse>();
   const maxCost = getOpenAiMaxCostPerScanUsd();
   let remainingBudget = maxCost;
+  const kybRequirements = input.kybRequirements || [];
+  const businessRequirements = input.businessRequirements || [];
 
   const visualEstimate =
     input.visualRequirements.length > 0
@@ -284,15 +345,38 @@ export async function runDualBatchedAiReviews(input: {
     input.contentRequirements.length > 0
       ? estimateOpenAiCallCostUsd({
           model: resolveOpenAiTextModel(),
-          textInputTokens: 5_000,
+          textInputTokens: 6_000,
           includeImage: false,
           outputTokens: 2_000,
         })
       : 0;
+  const kybEstimate =
+    kybRequirements.length > 0
+      ? estimateOpenAiCallCostUsd({
+          model: resolveOpenAiTextModel(),
+          textInputTokens: 6_000,
+          includeImage: false,
+          outputTokens: 1_500,
+        })
+      : 0;
+  const businessEstimate =
+    businessRequirements.length > 0
+      ? estimateOpenAiCallCostUsd({
+          model: resolveOpenAiTextModel(),
+          textInputTokens: 8_000,
+          includeImage: false,
+          outputTokens: 2_500,
+        })
+      : 0;
 
-  if (visualEstimate + contentEstimate > maxCost) {
-    const message = `AI review skipped: combined estimated cost $${(visualEstimate + contentEstimate).toFixed(2)} exceeds scan budget $${maxCost.toFixed(2)}.`;
-    for (const item of [...input.visualRequirements, ...input.contentRequirements]) {
+  if (visualEstimate + contentEstimate + kybEstimate + businessEstimate > maxCost) {
+    const message = `AI review skipped: combined estimated cost $${(visualEstimate + contentEstimate + kybEstimate + businessEstimate).toFixed(2)} exceeds scan budget $${maxCost.toFixed(2)}.`;
+    for (const item of [
+      ...input.visualRequirements,
+      ...input.contentRequirements,
+      ...kybRequirements,
+      ...businessRequirements,
+    ]) {
       merged.set(item.requirementId, manualReview(message));
     }
     return merged;
@@ -323,6 +407,34 @@ export async function runDualBatchedAiReviews(input: {
       htmlExcerptLimit: 12_000,
     });
     for (const [id, review] of content) merged.set(id, review);
+    remainingBudget = Math.max(0, remainingBudget - contentEstimate);
+  }
+
+  if (kybRequirements.length > 0) {
+    const kyb = await runBatchedAiReviews({
+      websiteUrl: input.websiteUrl,
+      htmlExcerpt: input.kybHtmlExcerpt || input.htmlExcerpt,
+      screenshotBase64: null,
+      requirements: kybRequirements,
+      batchGroup: "kyb",
+      maxCostUsd: remainingBudget,
+      htmlExcerptLimit: 16_000,
+    });
+    for (const [id, review] of kyb) merged.set(id, review);
+    remainingBudget = Math.max(0, remainingBudget - kybEstimate);
+  }
+
+  if (businessRequirements.length > 0) {
+    const business = await runBatchedAiReviews({
+      websiteUrl: input.websiteUrl,
+      htmlExcerpt: input.businessHtmlExcerpt || input.htmlExcerpt,
+      screenshotBase64: null,
+      requirements: businessRequirements,
+      batchGroup: "business",
+      maxCostUsd: remainingBudget,
+      htmlExcerptLimit: 20_000,
+    });
+    for (const [id, review] of business) merged.set(id, review);
   }
 
   return merged;
@@ -337,7 +449,7 @@ export function buildAiReviewBatchItem(
   return {
     requirementId,
     requirementName,
-    focusHint: extraPrompt || AI_HANDLER_HINTS[automationHandler],
+    focusHint: extraPrompt || AI_REQUIREMENT_HINTS[requirementId] || AI_HANDLER_HINTS[automationHandler],
   };
 }
 

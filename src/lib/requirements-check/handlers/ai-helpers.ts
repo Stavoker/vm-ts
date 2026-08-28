@@ -8,7 +8,9 @@ import {
 import { getScanExternal } from "../external/scan-cache";
 import type { RequirementCheckResult, RequirementDefinition, ScanContext } from "../types";
 import { groupAiDefinitions, resolveAiBatchGroup } from "./ai-batch-groups";
+import { buildBusinessPlanExcerpt, buildSiteContentExcerpt } from "./business-plan";
 import { manual } from "./shared";
+import { buildKybLegalExcerpt } from "./website-kyb";
 
 export { AI_REQUIREMENT_BATCH_GROUP, resolveAiBatchGroup } from "./ai-batch-groups";
 
@@ -17,10 +19,15 @@ export const AI_REVIEW_HANDLERS = new Set([
   "homepageHeroChecker",
   "contentQualityChecker",
   "websiteSimilarityChecker",
+  "kybVisibilityChecker",
+  "businessPlanAiChecker",
 ]);
 
 const AI_BATCH_CACHE_KEY = "ai-batch-reviews";
 const HOMEPAGE_EXCERPT_CACHE_KEY = "homepage-html-excerpt";
+const SITE_CONTENT_EXCERPT_CACHE_KEY = "site-content-excerpt";
+const KYB_EXCERPT_CACHE_KEY = "kyb-legal-excerpt";
+const BUSINESS_EXCERPT_CACHE_KEY = "business-plan-excerpt";
 
 function reviewToResult(
   definition: RequirementDefinition,
@@ -53,6 +60,30 @@ function reviewToResult(
   });
 }
 
+async function resolveBatchExcerpt(
+  batchGroup: ReturnType<typeof resolveAiBatchGroup>,
+  context: ScanContext,
+): Promise<string> {
+  switch (batchGroup) {
+    case "kyb":
+      return getScanExternal(context, KYB_EXCERPT_CACHE_KEY, () =>
+        Promise.resolve(buildKybLegalExcerpt(context)),
+      );
+    case "business":
+      return getScanExternal(context, BUSINESS_EXCERPT_CACHE_KEY, () =>
+        Promise.resolve(buildBusinessPlanExcerpt(context)),
+      );
+    case "content":
+      return getScanExternal(context, SITE_CONTENT_EXCERPT_CACHE_KEY, () =>
+        Promise.resolve(buildSiteContentExcerpt(context)),
+      );
+    default:
+      return getScanExternal(context, HOMEPAGE_EXCERPT_CACHE_KEY, () =>
+        fetchHomepageExcerpt(context.websiteUrl, 12_000),
+      );
+  }
+}
+
 export async function ensureBatchedAiReviews(
   definitions: RequirementDefinition[],
   context: ScanContext,
@@ -66,11 +97,22 @@ export async function ensureBatchedAiReviews(
     const htmlExcerpt = await getScanExternal(context, HOMEPAGE_EXCERPT_CACHE_KEY, () =>
       fetchHomepageExcerpt(context.websiteUrl, 12_000),
     );
+    const siteContentExcerpt = await getScanExternal(context, SITE_CONTENT_EXCERPT_CACHE_KEY, () =>
+      Promise.resolve(buildSiteContentExcerpt(context)),
+    );
+    const kybExcerpt = await getScanExternal(context, KYB_EXCERPT_CACHE_KEY, () =>
+      Promise.resolve(buildKybLegalExcerpt(context)),
+    );
+    const businessExcerpt = await getScanExternal(context, BUSINESS_EXCERPT_CACHE_KEY, () =>
+      Promise.resolve(buildBusinessPlanExcerpt(context)),
+    );
     const groups = groupAiDefinitions(aiDefinitions);
 
     return runDualBatchedAiReviews({
       websiteUrl: context.websiteUrl,
-      htmlExcerpt,
+      htmlExcerpt: siteContentExcerpt || htmlExcerpt,
+      kybHtmlExcerpt: kybExcerpt,
+      businessHtmlExcerpt: businessExcerpt,
       screenshotBase64: context.homepageScreenshotBase64,
       visualRequirements: groups.visual.map((definition) =>
         buildAiReviewBatchItem(
@@ -80,6 +122,20 @@ export async function ensureBatchedAiReviews(
         ),
       ),
       contentRequirements: groups.content.map((definition) =>
+        buildAiReviewBatchItem(
+          definition.id,
+          definition.originalName,
+          definition.automationHandler,
+        ),
+      ),
+      kybRequirements: groups.kyb.map((definition) =>
+        buildAiReviewBatchItem(
+          definition.id,
+          definition.originalName,
+          definition.automationHandler,
+        ),
+      ),
+      businessRequirements: groups.business.map((definition) =>
         buildAiReviewBatchItem(
           definition.id,
           definition.originalName,
@@ -108,9 +164,7 @@ export async function runDefinitionAiReview(
   }
 
   const batchGroup = resolveAiBatchGroup(definition);
-  const htmlExcerpt = await getScanExternal(context, HOMEPAGE_EXCERPT_CACHE_KEY, () =>
-    fetchHomepageExcerpt(context.websiteUrl, 12_000),
-  );
+  const htmlExcerpt = await resolveBatchExcerpt(batchGroup, context);
   const singleBatch = await runBatchedAiReviews({
     websiteUrl: context.websiteUrl,
     htmlExcerpt,
@@ -124,7 +178,12 @@ export async function runDefinitionAiReview(
       ),
     ],
     batchGroup,
-    htmlExcerptLimit: batchGroup === "content" ? 12_000 : 6_000,
+    htmlExcerptLimit:
+      batchGroup === "content"
+        ? 16_000
+        : batchGroup === "kyb" || batchGroup === "business"
+          ? 20_000
+          : 6_000,
   });
 
   const review =

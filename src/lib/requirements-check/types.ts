@@ -163,6 +163,7 @@ export type ScanContext = {
   websiteUrl: string;
   hostname: string;
   credentials?: ScanCredentials;
+  loginSucceeded?: boolean;
   pages: DiscoveredPage[];
   pageSnapshots?: Map<string, PageSnapshot>;
   results: Map<string, RequirementCheckResult>;

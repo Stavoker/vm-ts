@@ -2,35 +2,51 @@ import PDFDocument from "pdfkit";
 import type { RequirementCheckSession, RequirementResultRow, RequirementResultStatus } from "../types";
 import { REQUIREMENTS_SOURCE } from "../constants";
 import {
-  buildIssueComment,
+  buildCompactComment,
   groupResultsByCategory,
   PDF_STATUS_COLORS,
   sortResultsForReport,
+  summarizeBySubCategory,
 } from "./report-helpers";
 
-const MARGIN = 48;
-const CONTENT_WIDTH = 595.28 - MARGIN * 2;
+const MARGIN = 40;
+const PAGE_WIDTH = 595.28;
+const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
+const BADGE_WIDTH = 48;
+const ROW_TEXT_X = MARGIN + BADGE_WIDTH + 8;
+const ROW_TEXT_WIDTH = CONTENT_WIDTH - BADGE_WIDTH - 8;
 
 type PDFDoc = InstanceType<typeof PDFDocument>;
 
 function ensureSpace(doc: PDFDoc, height: number) {
-  if (doc.y + height > doc.page.height - MARGIN) {
+  const bottom = doc.page.height - MARGIN;
+  if (doc.y + height > bottom) {
     doc.addPage();
+    doc.x = MARGIN;
+    doc.y = MARGIN;
   }
 }
 
+function drawFooter(doc: PDFDoc, pageIndex: number, pageCount: number) {
+  doc.switchToPage(pageIndex);
+  doc._wrapper = null;
+  doc._textOptions = null;
+  const label = `Page ${pageIndex + 1} of ${pageCount}`;
+  doc.fillColor("#9ca3af").font("Helvetica").fontSize(7);
+  const labelWidth = doc.widthOfString(label);
+  doc.text(label, doc.page.width - MARGIN - labelWidth, doc.page.height - 28, {
+    lineBreak: false,
+  });
+}
+
 function drawSectionTitle(doc: PDFDoc, title: string, color = "#111827") {
-  ensureSpace(doc, 28);
-  doc.fillColor(color).font("Helvetica-Bold").fontSize(13).text(title, MARGIN, doc.y, {
+  ensureSpace(doc, 22);
+  doc.fillColor(color).font("Helvetica-Bold").fontSize(11).text(title, MARGIN, doc.y, {
     width: CONTENT_WIDTH,
   });
-  doc.moveDown(0.4);
-  doc
-    .strokeColor("#e5e7eb")
-    .moveTo(MARGIN, doc.y)
-    .lineTo(MARGIN + CONTENT_WIDTH, doc.y)
-    .stroke();
-  doc.moveDown(0.6);
+  doc.moveDown(0.25);
+  doc.strokeColor("#e5e7eb").moveTo(MARGIN, doc.y).lineTo(MARGIN + CONTENT_WIDTH, doc.y).stroke();
+  doc.moveDown(0.45);
 }
 
 function drawMetricBox(
@@ -42,54 +58,108 @@ function drawMetricBox(
   value: string,
   accent: string,
 ) {
-  doc.roundedRect(x, y, width, 52, 6).fillAndStroke("#f9fafb", "#e5e7eb");
-  doc.fillColor("#6b7280").font("Helvetica").fontSize(8).text(label.toUpperCase(), x + 10, y + 10, {
-    width: width - 20,
+  doc.roundedRect(x, y, width, 44, 5).fillAndStroke("#f9fafb", "#e5e7eb");
+  doc.fillColor("#6b7280").font("Helvetica").fontSize(7).text(label.toUpperCase(), x + 8, y + 8, {
+    width: width - 16,
   });
-  doc.fillColor(accent).font("Helvetica-Bold").fontSize(16).text(value, x + 10, y + 24, {
-    width: width - 20,
+  doc.fillColor(accent).font("Helvetica-Bold").fontSize(14).text(value, x + 8, y + 20, {
+    width: width - 16,
   });
 }
 
 function drawStatusBadge(doc: PDFDoc, status: RequirementResultStatus, x: number, y: number) {
   const palette = PDF_STATUS_COLORS[status];
-  const width = 52;
-  doc.roundedRect(x, y, width, 16, 4).fill(palette.fill);
-  doc.fillColor(palette.text).font("Helvetica-Bold").fontSize(8).text(palette.label, x + 8, y + 4);
+  doc.roundedRect(x, y, BADGE_WIDTH, 14, 3).fill(palette.fill);
+  doc.fillColor(palette.text).font("Helvetica-Bold").fontSize(7).text(palette.label, x + 6, y + 3.5);
 }
 
-function drawIssueCard(doc: PDFDoc, row: RequirementResultRow) {
-  const palette = PDF_STATUS_COLORS[row.status];
+function estimateRowHeight(doc: PDFDoc, row: RequirementResultRow): number {
+  const nameHeight = doc.heightOfString(row.requirement_name, {
+    width: ROW_TEXT_WIDTH,
+  });
+  const comment = buildCompactComment(row);
+  const commentHeight = comment
+    ? doc.heightOfString(comment, { width: ROW_TEXT_WIDTH, lineGap: 0.5 }) + 2
+    : 0;
+  return Math.max(14, nameHeight) + commentHeight + 6;
+}
+
+function drawCompactRow(doc: PDFDoc, row: RequirementResultRow) {
+  const rowHeight = estimateRowHeight(doc, row);
+  ensureSpace(doc, rowHeight);
+
   const startY = doc.y;
-  const cardHeight = 78;
-
-  ensureSpace(doc, cardHeight + 8);
-  doc.roundedRect(MARGIN, startY, CONTENT_WIDTH, cardHeight, 8).fillAndStroke(palette.fill, "#e5e7eb");
-
-  drawStatusBadge(doc, row.status, MARGIN + 12, startY + 10);
-  doc
-    .fillColor("#111827")
-    .font("Helvetica-Bold")
-    .fontSize(10)
-    .text(row.requirement_name, MARGIN + 72, startY + 10, { width: CONTENT_WIDTH - 84 });
+  drawStatusBadge(doc, row.status, MARGIN, startY);
 
   doc
-    .fillColor("#374151")
-    .font("Helvetica")
-    .fontSize(9)
-    .text(buildIssueComment(row), MARGIN + 12, startY + 32, {
-      width: CONTENT_WIDTH - 24,
-      lineGap: 2,
+    .fillColor(row.status === "PASS" ? "#374151" : "#111827")
+    .font(row.status === "PASS" ? "Helvetica" : "Helvetica-Bold")
+    .fontSize(8)
+    .text(row.requirement_name, ROW_TEXT_X, startY, { width: ROW_TEXT_WIDTH });
+
+  const comment = buildCompactComment(row);
+  if (comment) {
+    doc
+      .fillColor("#6b7280")
+      .font("Helvetica")
+      .fontSize(7)
+      .text(comment, ROW_TEXT_X, doc.y + 1, { width: ROW_TEXT_WIDTH, lineGap: 0.5 });
+  }
+
+  doc.y = Math.max(doc.y, startY + 14) + 4;
+}
+
+function drawCategorySummaryTable(doc: PDFDoc, results: RequirementResultRow[]) {
+  const summaries = summarizeBySubCategory(results);
+  const colWidths = [CONTENT_WIDTH * 0.46, 42, 42, 42, 42];
+  const headerY = doc.y;
+
+  ensureSpace(doc, 20 + summaries.length * 14);
+  doc.fillColor("#6b7280").font("Helvetica-Bold").fontSize(7);
+  let x = MARGIN;
+  for (const [label, width] of [
+    ["Section", colWidths[0]],
+    ["Pass", colWidths[1]],
+    ["Manual", colWidths[2]],
+    ["Fail", colWidths[3]],
+    ["Score", colWidths[4]],
+  ] as const) {
+    doc.text(label, x, headerY, { width, align: label === "Section" ? "left" : "center" });
+    x += width;
+  }
+
+  doc.moveDown(0.5);
+  doc.strokeColor("#e5e7eb").moveTo(MARGIN, doc.y).lineTo(MARGIN + CONTENT_WIDTH, doc.y).stroke();
+  doc.moveDown(0.25);
+
+  for (const summary of summaries) {
+    ensureSpace(doc, 13);
+    const rowY = doc.y;
+    x = MARGIN;
+    doc.fillColor("#374151").font("Helvetica").fontSize(7.5);
+    doc.text(`${summary.subCategory}`, x, rowY, { width: colWidths[0] - 4 });
+    x += colWidths[0];
+    doc.text(String(summary.pass), x, rowY, { width: colWidths[1], align: "center" });
+    x += colWidths[1];
+    doc.text(String(summary.manual), x, rowY, { width: colWidths[2], align: "center" });
+    x += colWidths[2];
+    doc.fillColor(summary.fail > 0 ? "#991b1b" : "#374151").text(String(summary.fail), x, rowY, {
+      width: colWidths[3],
+      align: "center",
     });
+    x += colWidths[3];
+    doc.fillColor("#374151").text(`${summary.score}%`, x, rowY, { width: colWidths[4], align: "center" });
+    doc.y = rowY + 12;
+  }
 
-  doc.y = startY + cardHeight + 10;
+  doc.moveDown(0.5);
 }
 
 export async function generateRequirementsPdf(input: {
   session: RequirementCheckSession;
   results: RequirementResultRow[];
 }): Promise<Buffer> {
-  const doc = new PDFDocument({ margin: MARGIN, size: "A4" });
+  const doc = new PDFDocument({ margin: MARGIN, size: "A4", bufferPages: true });
   const chunks: Buffer[] = [];
   doc.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
 
@@ -102,24 +172,21 @@ export async function generateRequirementsPdf(input: {
   const manuals = input.results.filter((row) => row.status === "MANUAL");
   const passes = input.results.filter((row) => row.status === "PASS");
 
-  doc.rect(0, 0, doc.page.width, 92).fill("#111827");
-  doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(20).text("Requirements Check Report", MARGIN, 28);
-  doc
-    .font("Helvetica")
-    .fontSize(10)
-    .text(`${input.session.hostname} · ${input.session.website_url}`, MARGIN, 56, {
-      width: CONTENT_WIDTH,
-    });
+  doc.rect(0, 0, doc.page.width, 78).fill("#111827");
+  doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(18).text("Requirements Check Report", MARGIN, 22);
+  doc.font("Helvetica").fontSize(9).text(`${input.session.hostname} · ${input.session.website_url}`, MARGIN, 46, {
+    width: CONTENT_WIDTH,
+  });
 
-  doc.y = 110;
+  doc.y = 92;
   doc.fillColor("#111827");
 
-  const boxWidth = (CONTENT_WIDTH - 18) / 4;
+  const boxWidth = (CONTENT_WIDTH - 15) / 4;
   const metricsY = doc.y;
   drawMetricBox(doc, MARGIN, metricsY, boxWidth, "Overall Score", `${input.session.overall_score ?? 0}%`, "#111827");
   drawMetricBox(
     doc,
-    MARGIN + boxWidth + 6,
+    MARGIN + boxWidth + 5,
     metricsY,
     boxWidth,
     "Automation",
@@ -128,7 +195,7 @@ export async function generateRequirementsPdf(input: {
   );
   drawMetricBox(
     doc,
-    MARGIN + (boxWidth + 6) * 2,
+    MARGIN + (boxWidth + 5) * 2,
     metricsY,
     boxWidth,
     "Pages Checked",
@@ -137,106 +204,86 @@ export async function generateRequirementsPdf(input: {
   );
   drawMetricBox(
     doc,
-    MARGIN + (boxWidth + 6) * 3,
+    MARGIN + (boxWidth + 5) * 3,
     metricsY,
     boxWidth,
-    "Results",
-    `${passes.length}/${manuals.length}/${fails.length}`,
+    "Pass / Manual / Fail",
+    `${passes.length} / ${manuals.length} / ${fails.length}`,
     fails.length > 0 ? "#991b1b" : "#166534",
   );
 
-  doc.y = metricsY + 68;
+  doc.y = metricsY + 56;
   doc
     .fillColor("#6b7280")
     .font("Helvetica")
-    .fontSize(9)
+    .fontSize(8)
     .text(
       `Scan date: ${new Date(input.session.completed_at || input.session.created_at).toLocaleString()} · Source: ${REQUIREMENTS_SOURCE}`,
       MARGIN,
       doc.y,
       { width: CONTENT_WIDTH },
     );
-  doc.moveDown(1.2);
+  doc.moveDown(0.8);
+
+  drawSectionTitle(doc, "Section Summary");
+  drawCategorySummaryTable(doc, input.results);
 
   if (fails.length > 0) {
-    drawSectionTitle(doc, `Critical Issues Found (${fails.length})`, "#991b1b");
-    doc
-      .fillColor("#374151")
-      .font("Helvetica")
-      .fontSize(9)
-      .text(
-        "These items failed automated checks and should be fixed on the website before submission.",
-        MARGIN,
-        doc.y,
-        { width: CONTENT_WIDTH },
-      );
-    doc.moveDown(0.8);
+    drawSectionTitle(doc, `Critical Issues (${fails.length})`, "#991b1b");
     for (const row of sortResultsForReport(fails)) {
-      drawIssueCard(doc, row);
+      drawCompactRow(doc, row);
     }
+    doc.moveDown(0.3);
   }
 
-  if (manuals.length > 0) {
-    drawSectionTitle(doc, `Manual Review Required (${manuals.length})`, "#854d0e");
-    doc
-      .fillColor("#374151")
-      .font("Helvetica")
-      .fontSize(9)
-      .text(
-        "These items need human verification or supporting documents that cannot be confirmed automatically.",
-        MARGIN,
-        doc.y,
-        { width: CONTENT_WIDTH },
-      );
-    doc.moveDown(0.8);
-    for (const row of sortResultsForReport(manuals).slice(0, 40)) {
-      drawIssueCard(doc, row);
-    }
-    if (manuals.length > 40) {
-      doc
-        .fillColor("#6b7280")
-        .font("Helvetica-Oblique")
-        .fontSize(9)
-        .text(`+ ${manuals.length - 40} more manual items listed in the detailed section below.`);
-      doc.moveDown(0.8);
-    }
-  }
+  drawSectionTitle(doc, "Full Checklist");
+  doc
+    .fillColor("#6b7280")
+    .font("Helvetica")
+    .fontSize(7.5)
+    .text(
+      `${input.results.length} requirements · compact view (issues only show comments; passed items show name only)`,
+      MARGIN,
+      doc.y,
+      { width: CONTENT_WIDTH },
+    );
+  doc.moveDown(0.5);
 
-  drawSectionTitle(doc, "Detailed Checklist");
   for (const [key, rows] of groupResultsByCategory(input.results)) {
-    const [category, subCategory] = key.split("::");
+    const [, subCategory] = key.split("::");
     const passCount = rows.filter((row) => row.status === "PASS").length;
     const sectionScore = rows.length ? Math.round((passCount / rows.length) * 100) : 0;
 
-    ensureSpace(doc, 40);
-    doc.fillColor("#111827").font("Helvetica-Bold").fontSize(11).text(category, MARGIN, doc.y);
+    ensureSpace(doc, 24);
+    const headerY = doc.y;
+    doc.fillColor("#111827").font("Helvetica-Bold").fontSize(9).text(subCategory, MARGIN, headerY);
     doc
-      .fillColor("#6b7280")
+      .fillColor("#9ca3af")
       .font("Helvetica")
-      .fontSize(9)
-      .text(`${subCategory} · section score ${sectionScore}%`, MARGIN, doc.y + 14);
-    doc.moveDown(1.1);
+      .fontSize(7)
+      .text(`${rows.length} items · ${sectionScore}% pass`, MARGIN + CONTENT_WIDTH - 80, headerY, {
+        width: 80,
+        align: "right",
+        lineBreak: false,
+      });
+    doc.y = headerY + 14;
+    doc.moveDown(0.35);
 
     for (const row of rows) {
-      ensureSpace(doc, 56);
-      const itemY = doc.y;
-      drawStatusBadge(doc, row.status, MARGIN, itemY);
-      doc
-        .fillColor("#111827")
-        .font("Helvetica-Bold")
-        .fontSize(9.5)
-        .text(row.requirement_name, MARGIN + 62, itemY, { width: CONTENT_WIDTH - 62 });
-      doc
-        .fillColor("#374151")
-        .font("Helvetica")
-        .fontSize(8.8)
-        .text(buildIssueComment(row), MARGIN + 62, itemY + 16, {
-          width: CONTENT_WIDTH - 62,
-          lineGap: 1.5,
-        });
-      doc.moveDown(0.9);
+      drawCompactRow(doc, row);
     }
-    doc.moveDown(0.4);
+    doc.moveDown(0.2);
+  }
+
+  const range = doc.bufferedPageRange();
+  const pageCount = range.count;
+  for (let i = range.start; i < range.start + pageCount; i += 1) {
+    drawFooter(doc, i, pageCount);
+  }
+
+  const afterFooters = doc.bufferedPageRange();
+  if (afterFooters.count !== pageCount) {
+    throw new Error(`PDF footer pass added ${afterFooters.count - pageCount} blank page(s)`);
   }
 
   doc.end();

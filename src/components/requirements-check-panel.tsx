@@ -36,6 +36,22 @@ function activityEventLabel(eventType: string): string {
   return eventType.replace(/_/g, " ");
 }
 
+function scanEventKey(event: ScanEvent): string {
+  return event.id || `${event.created_at}|${event.event_type}|${event.message}`;
+}
+
+function dedupeScanEvents(events: ScanEvent[]): ScanEvent[] {
+  const seen = new Set<string>();
+  const unique: ScanEvent[] = [];
+  for (const event of events) {
+    const key = scanEventKey(event);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(event);
+  }
+  return unique;
+}
+
 function formatDuration(ms: number | null) {
   if (!ms) return "—";
   const sec = Math.round(ms / 1000);
@@ -77,13 +93,15 @@ export function RequirementsCheckPanel() {
     }
   }, []);
 
-  const loadScan = useCallback(async (id: string) => {
+  const loadScan = useCallback(async (id: string, options?: { includeEvents?: boolean }) => {
     const response = await fetch(`/api/requirements-check/${id}`);
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Не удалось загрузить скан");
     setActiveSession(data.session as RequirementCheckSession);
     setResults(data.results as RequirementResultRow[]);
-    setEvents(data.events as ScanEvent[]);
+    if (options?.includeEvents !== false) {
+      setEvents(dedupeScanEvents(data.events as ScanEvent[]));
+    }
   }, []);
 
   useEffect(() => {
@@ -99,8 +117,8 @@ export function RequirementsCheckPanel() {
     const source = new EventSource(`/api/requirements-check/${activeId}/events`);
     source.addEventListener("event", (message) => {
       const event = JSON.parse(message.data) as ScanEvent;
-      setEvents((prev) => [...prev, event]);
-      void loadScan(activeId);
+      setEvents((prev) => dedupeScanEvents([...prev, event]));
+      void loadScan(activeId, { includeEvents: false });
       void loadSessions();
     });
     source.addEventListener("screenshot", (message) => {
@@ -445,9 +463,9 @@ export function RequirementsCheckPanel() {
         <section className="rounded border border-[var(--border)] bg-white p-4">
           <h3 className="mb-2 text-sm font-semibold">Activity log</h3>
           <div className="max-h-72 overflow-y-auto font-mono text-[11px] leading-5 text-gray-600">
-            {events.slice(-120).map((event) => (
+            {events.slice(-120).map((event, index) => (
               <div
-                key={event.id || `${event.created_at}-${event.message}`}
+                key={`${scanEventKey(event)}-${index}`}
                 className="border-b border-gray-50 py-1 last:border-0"
               >
                 <span className="text-gray-400">{new Date(event.created_at).toLocaleTimeString()}</span>

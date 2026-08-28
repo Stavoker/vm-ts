@@ -8,10 +8,15 @@ const PLACEHOLDER_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /\b\+?0{7,}\b/, label: "zero-filled phone number" },
 ];
 
+export function stripUrlsForPlaceholderScan(text: string): string {
+  return text.replace(/https?:\/\/[^\s]+/gi, " ");
+}
+
 export function detectPlaceholders(text: string): string[] {
   const found = new Set<string>();
+  const sanitized = stripUrlsForPlaceholderScan(text);
   for (const item of PLACEHOLDER_PATTERNS) {
-    if (item.pattern.test(text)) found.add(item.label);
+    if (item.pattern.test(sanitized)) found.add(item.label);
   }
   return [...found];
 }

@@ -172,6 +172,7 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
         await context.waitIfPaused();
       } else {
         loginOk = login.ok;
+        context.loginSucceeded = login.ok;
         await emit(login.ok ? "login_successful" : "login_failed", login.message);
       }
     }
@@ -274,7 +275,7 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
 
     const enabledDefinitions = await loadRequirementDefinitions({ enabledOnly: true });
     await ensureBatchedAiReviews(enabledDefinitions, context);
-    await emit("ai_review_completed", "Visual and content AI review batches prepared");
+    await emit("ai_review_completed", "Visual, content, KYB, and business-plan AI batches prepared");
 
     let index = 0;
     for (const definition of enabledDefinitions) {

@@ -9,29 +9,50 @@ export const PDF_STATUS_COLORS: Record<
   MANUAL: { fill: "#fef9c3", text: "#854d0e", label: "MANUAL" },
 };
 
-export function buildIssueComment(row: RequirementResultRow): string {
-  if (row.status === "PASS") {
-    return "Requirement met based on automated scan evidence.";
+const DEFAULT_COMMENT_MAX = 120;
+const FAIL_COMMENT_MAX = 200;
+
+function stripRedundantManualInstruction(row: RequirementResultRow): string {
+  const explanation = row.explanation.trim();
+  const manual = row.evidence?.manualInstruction?.trim();
+  if (!manual) return explanation;
+
+  const normalizedManual = manual.replace(/\.$/, "");
+  const normalizedName = `Manually verify: ${row.requirement_name}`.replace(/\.$/, "");
+  if (normalizedManual === normalizedName || explanation.includes(normalizedManual)) {
+    return explanation;
   }
 
-  const parts = [row.explanation.trim()];
-  if (row.checked_url || row.checkedUrl) {
-    parts.push(`Checked URL: ${row.checked_url || row.checkedUrl}`);
-  }
+  return explanation;
+}
+
+function truncate(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 1).trim()}…`;
+}
+
+/** Short comment for compact PDF rows. PASS items return empty string. */
+export function buildCompactComment(
+  row: RequirementResultRow,
+  maxLength = DEFAULT_COMMENT_MAX,
+): string {
+  if (row.status === "PASS") return "";
+
+  const parts = [stripRedundantManualInstruction(row)];
+
+  const url = row.checked_url || row.checkedUrl;
+  if (url) parts.push(url);
+
   if (row.evidence?.calculatedValue) {
-    parts.push(`Detected value: ${row.evidence.calculatedValue}`);
-  }
-  if (row.evidence?.manualInstruction) {
-    parts.push(`Manual follow-up: ${row.evidence.manualInstruction}`);
+    parts.push(String(row.evidence.calculatedValue));
   }
 
-  if (row.status === "FAIL") {
-    parts.push("Recommended action: fix this on the website before onboarding submission.");
-  } else {
-    parts.push("Recommended action: verify manually and attach supporting evidence if required.");
-  }
+  return truncate(parts.filter(Boolean).join(" · "), maxLength);
+}
 
-  return parts.filter(Boolean).join(" ");
+/** Slightly longer comment for the critical-failures summary block. */
+export function buildIssueComment(row: RequirementResultRow): string {
+  return buildCompactComment(row, row.status === "FAIL" ? FAIL_COMMENT_MAX : DEFAULT_COMMENT_MAX);
 }
 
 export function sortResultsForReport(results: RequirementResultRow[]): RequirementResultRow[] {
@@ -55,4 +76,34 @@ export function groupResultsByCategory(results: RequirementResultRow[]) {
     groups.get(key)!.push(row);
   }
   return groups;
+}
+
+export type CategorySummary = {
+  category: string;
+  subCategory: string;
+  total: number;
+  pass: number;
+  manual: number;
+  fail: number;
+  score: number;
+};
+
+export function summarizeBySubCategory(results: RequirementResultRow[]): CategorySummary[] {
+  const summaries: CategorySummary[] = [];
+  for (const [key, rows] of groupResultsByCategory(results)) {
+    const [category, subCategory] = key.split("::");
+    const pass = rows.filter((row) => row.status === "PASS").length;
+    const manual = rows.filter((row) => row.status === "MANUAL").length;
+    const fail = rows.filter((row) => row.status === "FAIL").length;
+    summaries.push({
+      category,
+      subCategory,
+      total: rows.length,
+      pass,
+      manual,
+      fail,
+      score: rows.length ? Math.round((pass / rows.length) * 100) : 0,
+    });
+  }
+  return summaries;
 }

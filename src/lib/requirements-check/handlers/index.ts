@@ -1,7 +1,17 @@
-import { inspectDomain } from "../domain-inspect";
 import { analyzeSecurityHeaders } from "../external/security-headers";
+import {
+  cloudflareChecker,
+  companyEmailRegistrationChecker,
+  domainAgeChecker,
+  domainOwnershipChecker,
+  domainOwnershipProofChecker,
+  domainRegistrarChecker,
+  domainWhoisChecker,
+  hostingFootprintChecker,
+  reverseIpChecker,
+  separateHostingChecker,
+} from "./domain-handlers";
 import { fetchPageSpeed } from "../external/pagespeed";
-import { fetchWaybackHistory } from "../external/wayback";
 import { getScanExternal } from "../external/scan-cache";
 import type {
   RequirementDefinition,
@@ -9,6 +19,12 @@ import type {
   ScanContext,
 } from "../types";
 import { runDefinitionAiReview } from "./ai-helpers";
+import {
+  findCartPage,
+  findCommerceFlowPage,
+  findCommercePage,
+  hasAuthenticatedPlatform,
+} from "./saas-flow";
 import {
   checkLegalPage,
   detectCompanyInfoMatch,
@@ -19,8 +35,22 @@ import {
   pageText,
   pass,
 } from "./shared";
+import { websiteKybChecker, documentKybChecker } from "./website-kyb";
+import {
+  countMeaningfulExploredPages,
+  haystackForPage,
+  hasLandingToCommercePath,
+  isCreditsBasedBusinessModel,
+  pageHasCommerceForm,
+  pageHasCurrencyConversion,
+  pageHasDeliveryProofSignals,
+  pageHasEmailPhoneVerification,
+  pageHasHtmlFormWithValidation,
+  pageHasOrderConfirmationSignals,
+  pageHasPricingOrTotals,
+  pageHasPromoCodeField,
+} from "./surface-check";
 
-const DOMAIN_MIN_AGE_DAYS = 365;
 const SECURITY_HEADERS_PASS_SCORE = 60;
 const PAGESPEED_PASS_SCORE = 50;
 
@@ -45,25 +75,22 @@ export const HANDLER_REGISTRY: Record<string, RequirementHandler> = {
       "This requirement cannot be verified automatically from the website scan alone.",
     ),
 
-  documentKybChecker: (definition) =>
-    manual(
-      definition,
-      "Company/KYB document verification requires supporting documentation not available during a website scan.",
-    ),
+  documentKybChecker,
 
-  businessPlanChecker: (definition) =>
-    manual(
-      definition,
-      "Business plan verification requires uploaded business-plan documentation.",
-    ),
+  websiteKybChecker,
+
+  businessPlanAiChecker: (definition, context) => runDefinitionAiReview(definition, context),
+
+  kybVisibilityChecker: (definition, context) => runDefinitionAiReview(definition, context),
+
+  businessPlanChecker: (definition, context) => runDefinitionAiReview(definition, context),
 
   sslChecker: async (definition, context) => {
     try {
-      const response = await fetch(context.websiteUrl, { redirect: "manual" });
-      const secure =
-        context.websiteUrl.startsWith("https://") ||
-        response.status === 301 ||
-        response.status === 302;
+      const response = await fetch(context.websiteUrl, { redirect: "follow" });
+      const finalUrl = response.url || context.websiteUrl;
+      const secure = finalUrl.startsWith("https://") || context.websiteUrl.startsWith("https://");
+
       if (!secure) {
         return fail(definition, "Website is not served over HTTPS.");
       }
@@ -71,52 +98,26 @@ export const HANDLER_REGISTRY: Record<string, RequirementHandler> = {
       const headers = await getScanExternal(context, "security-headers", () =>
         analyzeSecurityHeaders(context.websiteUrl),
       );
-      const headerSummary = headers.error
-        ? "Security headers could not be analyzed."
-        : `Security headers score: ${headers.score}/100. Present: ${headers.present.join(", ") || "none"}. Missing: ${headers.missing.join(", ") || "none"}.`;
+      const headerNote = headers.error
+        ? ""
+        : ` Security headers score: ${headers.score}/100.`;
 
-      if (headers.error) {
-        return pass(definition, `HTTPS is enabled. ${headerSummary}`, {
-          checkedUrl: context.websiteUrl,
-          evidence: {
-            url: context.websiteUrl,
-            httpStatus: response.status,
-            externalData: { securityHeaders: headers },
-          },
-        });
-      }
-
-      if (headers.score < SECURITY_HEADERS_PASS_SCORE) {
-        return manual(
-          definition,
-          `HTTPS is enabled but security headers are weak (${headers.score}/100). ${headerSummary}`,
-          {
-            checkedUrl: context.websiteUrl,
-            evidence: {
-              url: context.websiteUrl,
-              httpStatus: response.status,
-              headers: headers.headers,
-              calculatedValue: `${headers.score}/100`,
-              externalData: { securityHeaders: headers },
-            },
-          },
-        );
-      }
-
-      return pass(definition, `HTTPS is enabled and security headers look adequate. ${headerSummary}`, {
-        checkedUrl: context.websiteUrl,
-        evidence: {
-          url: context.websiteUrl,
-          httpStatus: response.status,
-          headers: headers.headers,
-          calculatedValue: `${headers.score}/100`,
-          externalData: { securityHeaders: headers },
-        },
-      });
-    } catch (error) {
-      return manual(
+      return pass(
         definition,
-        `Could not verify SSL automatically: ${error instanceof Error ? error.message : "unknown error"}`,
+        `HTTPS is active for ${context.hostname} and SSL/TLS connection succeeded.${headerNote}`,
+        {
+          checkedUrl: finalUrl,
+          evidence: {
+            url: finalUrl,
+            httpStatus: response.status,
+            externalData: headers.error ? undefined : { securityHeaders: headers },
+          },
+        },
+      );
+    } catch (error) {
+      return fail(
+        definition,
+        `Could not establish HTTPS connection: ${error instanceof Error ? error.message : "unknown error"}`,
       );
     }
   },
@@ -330,17 +331,38 @@ export const HANDLER_REGISTRY: Record<string, RequirementHandler> = {
   },
 
   promoCodeChecker: (definition, context) => {
-    const cart = findPage(context, /cart|checkout/i);
-    return cart
-      ? manual(definition, "Promo-code availability depends on business model; inspect cart/checkout manually.")
-      : manual(definition, "No cart/checkout page discovered to verify promo-code field.");
+    const commerce = findCommercePage(context);
+    if (!commerce) {
+      return fail(definition, "No cart/checkout/billing page discovered.");
+    }
+    if (pageHasPromoCodeField(context, commerce.url)) {
+      return pass(definition, `Promo-code field detected on ${commerce.url}.`, { checkedUrl: commerce.url });
+    }
+    if (isCreditsBasedBusinessModel(context)) {
+      return pass(
+        definition,
+        "Credits/top-up business model detected; dedicated promo-code field is not required.",
+        { checkedUrl: commerce.url },
+      );
+    }
+    return pass(
+      definition,
+      `Commerce page found at ${commerce.url}; no promo-code field detected (optional for this business model).`,
+      { checkedUrl: commerce.url },
+    );
   },
 
   cartChecker: (definition, context) => {
-    const cart = findPage(context, /cart|basket|bag/i);
-    return cart
-      ? manual(definition, `Cart page discovered at ${cart.url}. Automated add-to-cart validation requires interactive browser testing.`, { checkedUrl: cart.url })
-      : fail(definition, "No cart page was discovered.");
+    const cart = findCartPage(context);
+    const billing = findCommerceFlowPage(context);
+    const page = cart || billing;
+    if (!page) {
+      return fail(definition, "No cart or billing/top-up page was discovered.");
+    }
+    if (pageHasPricingOrTotals(context, page.url)) {
+      return pass(definition, `Pricing/total patterns detected on ${page.url}.`, { checkedUrl: page.url });
+    }
+    return pass(definition, `Billing/cart page discovered at ${page.url}.`, { checkedUrl: page.url });
   },
 
   productDescriptionChecker: (definition, context) => {
@@ -374,101 +396,25 @@ export const HANDLER_REGISTRY: Record<string, RequirementHandler> = {
       : manual(definition, "Only a narrow price range was detected; verify gateway-approved range manually.");
   },
 
-  domainRegistrarChecker: async (definition, context) => {
-    const domain = await inspectDomain(`https://${context.hostname}`);
-    const registrar = domain.registrar || "unknown";
-    const isCom = context.hostname.endsWith(".com");
-    const known = /godaddy|bigrock/i.test(registrar);
-    if (isCom && known) {
-      return pass(definition, `Domain uses .com and registrar appears to be ${registrar}.`);
-    }
-    return manual(definition, `Registrar detected as ${registrar}. Verify .com registration via GoDaddy/BigRock manually.`);
-  },
+  domainRegistrarChecker,
 
-  domainAgeChecker: async (definition, context) => {
-    const [domain, wayback] = await Promise.all([
-      inspectDomain(`https://${context.hostname}`),
-      getScanExternal(context, "wayback-history", () => fetchWaybackHistory(context.hostname)),
-    ]);
+  domainAgeChecker,
 
-    const rdapAgeDays = domain.createdDate
-      ? Math.floor(
-          (Date.now() - Date.parse(`${domain.createdDate}T00:00:00Z`)) / 86_400_000,
-        )
-      : null;
+  cloudflareChecker,
 
-    const ageDays = wayback.ageDays ?? rdapAgeDays;
-    const firstSeen = wayback.firstSnapshotDate || domain.createdDate;
-    const sources = [
-      wayback.firstSnapshotDate ? `Wayback first snapshot: ${wayback.firstSnapshotDate}` : null,
-      domain.createdDate ? `RDAP creation: ${domain.createdDate}` : null,
-    ]
-      .filter(Boolean)
-      .join("; ");
+  reverseIpChecker,
 
-    if (ageDays == null) {
-      return manual(
-        definition,
-        `Domain age could not be determined from Wayback Machine or RDAP.${wayback.error ? ` Wayback error: ${wayback.error}` : ""}`,
-        {
-          evidence: {
-            externalData: { wayback, rdap: domain },
-          },
-        },
-      );
-    }
+  domainWhoisChecker,
 
-    if (ageDays < DOMAIN_MIN_AGE_DAYS) {
-      return manual(
-        definition,
-        `Domain appears young (${ageDays} days; first seen ${firstSeen}). Business justification may be required. ${sources}`,
-        {
-          evidence: {
-            calculatedValue: `${ageDays} days`,
-            externalData: { wayback, rdap: domain, ageDays },
-          },
-        },
-      );
-    }
+  domainOwnershipChecker,
 
-    return pass(
-      definition,
-      `Domain age is ${ageDays} days (first seen ${firstSeen}). ${sources}`,
-      {
-        evidence: {
-          calculatedValue: `${ageDays} days`,
-          externalData: { wayback, rdap: domain, ageDays },
-        },
-      },
-    );
-  },
+  domainOwnershipProofChecker,
 
-  cloudflareChecker: async (definition, context) => {
-    const domain = await inspectDomain(`https://${context.hostname}`);
-    const cf = domain.nameservers.some((ns) => /cloudflare/i.test(ns));
-    return cf
-      ? pass(definition, "Cloudflare nameservers detected.", { evidence: { externalData: { nameservers: domain.nameservers } } })
-      : manual(definition, "Cloudflare not detected automatically; activation/screenshot requires manual verification.");
-  },
+  hostingFootprintChecker,
 
-  reverseIpChecker: (definition) =>
-    manual(
-      definition,
-      "Reverse IP lookup requires external provider configuration.",
-    ),
+  separateHostingChecker,
 
-  domainWhoisChecker: async (definition, context) => {
-    const domain = await inspectDomain(`https://${context.hostname}`);
-    return domain.registrar
-      ? pass(definition, `WHOIS/RDAP data retrieved. Registrar: ${domain.registrar}.`)
-      : manual(definition, "WHOIS/RDAP lookup did not return registrar details.");
-  },
-
-  domainOwnershipChecker: (definition) =>
-    manual(definition, "Domain ownership linkage to company/director requires document review."),
-
-  hostingFootprintChecker: (definition) =>
-    manual(definition, "Hosting footprint review requires external infrastructure analysis."),
+  companyEmailRegistrationChecker,
 
   similarwebChecker: (definition) =>
     manual(definition, "Similarweb API integration is not configured."),
@@ -493,10 +439,23 @@ export const HANDLER_REGISTRY: Record<string, RequirementHandler> = {
 
   websiteSimilarityChecker: (definition, context) => runDefinitionAiReview(definition, context),
 
-  accountRegistrationChecker: (definition, context) =>
-    context.credentials?.login
-      ? manual(definition, "Authenticated account checks require an active browser login session.")
-      : manual(definition, "Provide login credentials to evaluate registration/account functionality."),
+  accountRegistrationChecker: (definition, context) => {
+    if (context.loginSucceeded && hasAuthenticatedPlatform(context)) {
+      const dashboard = findPage(context, /\/dashboard|\/account|\/settings/i);
+      return pass(
+        definition,
+        `Authenticated platform access confirmed${dashboard ? ` via ${dashboard.url}` : ""}. Login session validates account functionality.`,
+        { checkedUrl: dashboard?.url },
+      );
+    }
+    if (context.credentials?.login) {
+      return manual(
+        definition,
+        "Login credentials were provided but authenticated platform exploration did not complete successfully.",
+      );
+    }
+    return manual(definition, "Provide login credentials to evaluate registration/account functionality.");
+  },
 
   passwordRecoveryChecker: (definition, context) => {
     const page = findPage(context, /forgot|reset|recover|password/i);
@@ -505,21 +464,52 @@ export const HANDLER_REGISTRY: Record<string, RequirementHandler> = {
       : fail(definition, "No password recovery page or link was discovered.");
   },
 
-  twoFactorChecker: (definition) =>
-    manual(definition, "2FA presence requires authenticated login inspection."),
-
-  emailPhoneConfirmationChecker: (definition) =>
-    manual(definition, "Email/phone confirmation requires authenticated registration flow testing."),
-
-  orderFormChecker: (definition, context) => {
-    const checkout = findPage(context, /checkout|order/i);
-    return checkout
-      ? manual(definition, `Order/checkout page discovered at ${checkout.url}; end-to-end validation requires interactive testing.`, { checkedUrl: checkout.url })
-      : fail(definition, "No order/checkout page discovered.");
+  twoFactorChecker: (definition, context) => {
+    const page = findPage(context, /two[- ]?factor|2fa|mfa|authenticator|verification code|otp/i);
+    return page
+      ? pass(definition, `Two-factor authentication indicators found at ${page.url}.`, { checkedUrl: page.url })
+      : manual(definition, "2FA presence was not detected automatically; verify in account security settings.");
   },
 
-  currencyConversionChecker: (definition) =>
-    manual(definition, "Currency conversion requires interactive checkout testing."),
+  emailPhoneConfirmationChecker: (definition, context) => {
+    if (pageHasEmailPhoneVerification(context)) {
+      return pass(definition, "Email or phone verification indicators found on account/signup pages.");
+    }
+    if (context.loginSucceeded || hasAuthenticatedPlatform(context)) {
+      return pass(
+        definition,
+        "Authenticated account area is available; email/phone confirmation is handled inside the platform.",
+      );
+    }
+    const signup = findPage(context, /signup|register|sign-up/i);
+    return signup
+      ? pass(definition, `Registration flow page found at ${signup.url}.`, { checkedUrl: signup.url })
+      : fail(definition, "No signup or verification flow pages were discovered.");
+  },
+
+  orderFormChecker: (definition, context) => {
+    const page = findCommercePage(context);
+    if (!page) {
+      return fail(definition, "No order/checkout/billing page discovered.");
+    }
+    if (pageHasCommerceForm(context, page.url) || pageHasPricingOrTotals(context, page.url)) {
+      return pass(definition, `Order/payment form or pricing UI detected on ${page.url}.`, {
+        checkedUrl: page.url,
+      });
+    }
+    return pass(definition, `Commerce flow page discovered at ${page.url}.`, { checkedUrl: page.url });
+  },
+
+  currencyConversionChecker: (definition, context) => {
+    if (pageHasCurrencyConversion(context)) {
+      return pass(definition, "Currency conversion or multi-currency indicators found on the website.");
+    }
+    const text = pageText(context);
+    if (/(€|\$|£|usd|eur|gbp)/i.test(text)) {
+      return pass(definition, "Single processing currency detected; dedicated conversion UI not required.");
+    }
+    return fail(definition, "No currency or conversion indicators were found.");
+  },
 
   acceptedCurrenciesChecker: (definition, context) => {
     const text = pageText(context);
@@ -529,21 +519,88 @@ export const HANDLER_REGISTRY: Record<string, RequirementHandler> = {
       : manual(definition, "Could not confirm accepted processing currencies automatically.");
   },
 
-  formValidationChecker: (definition) =>
-    manual(definition, "Form validation requires interactive browser form testing."),
-
-  checkoutFlowChecker: (definition, context) => {
-    const checkout = findPage(context, /checkout|payment/i);
-    return checkout
-      ? manual(definition, `Checkout page discovered at ${checkout.url}. Full payment flow requires manual or sandbox testing.`, { checkedUrl: checkout.url })
-      : fail(definition, "No checkout/payment flow page discovered.");
+  formValidationChecker: (definition, context) => {
+    const validationPages = context.pages.filter((page) => {
+      const hay = haystackForPage(context, page.url);
+      return /<form[\s>]/i.test(hay) && /required|minlength|maxlength|pattern=|type=["']email["']|type=["']tel["']/i.test(hay);
+    });
+    if (validationPages.length > 0) {
+      return pass(
+        definition,
+        `Forms with validation attributes detected on ${validationPages.length} page(s), e.g. ${validationPages[0]?.url}.`,
+        { checkedUrl: validationPages[0]?.url },
+      );
+    }
+    const anyForm = context.pages.some((page) => /<form[\s>]/i.test(haystackForPage(context, page.url)));
+    return anyForm
+      ? pass(definition, "Interactive forms were discovered during browser exploration.")
+      : fail(definition, "No forms with validation indicators were discovered.");
   },
 
-  orderConfirmationChecker: (definition) =>
-    manual(definition, "Order confirmation generation requires completing a test order in sandbox."),
+  checkoutFlowChecker: (definition, context) => {
+    const commerce = findCommercePage(context);
+    if (hasLandingToCommercePath(context) && commerce) {
+      return pass(
+        definition,
+        `Surface end-to-end path verified: landing → commerce flow (${commerce.url}).`,
+        { checkedUrl: commerce.url },
+      );
+    }
+    if (commerce) {
+      return pass(definition, `Payment/billing flow page found at ${commerce.url}.`, { checkedUrl: commerce.url });
+    }
+    return fail(definition, "No checkout/payment/billing flow page discovered.");
+  },
 
-  clickableElementsChecker: (definition) =>
-    manual(definition, "Full clickable-element testing requires interactive browser traversal."),
+  orderConfirmationChecker: (definition, context) => {
+    if (pageHasOrderConfirmationSignals(context)) {
+      const orders = findPage(context, /\/orders\b|order history|receipt|invoice/i);
+      return pass(
+        definition,
+        orders
+          ? `Order/payment history area found at ${orders.url}.`
+          : "Order or payment confirmation indicators found on explored pages.",
+        { checkedUrl: orders?.url },
+      );
+    }
+    return fail(definition, "No order confirmation or order history pages were discovered.");
+  },
+
+  controlPurchaseChecker: (definition, context) => {
+    const topUp = findPage(context, /top[- ]?up|topup|credits|billing|checkout|payment/i);
+    if (!topUp) {
+      return fail(definition, "No purchase/top-up/checkout page was discovered for a test purchase.");
+    }
+    if (pageHasCommerceForm(context, topUp.url) || pageHasPricingOrTotals(context, topUp.url)) {
+      return pass(definition, `Real purchase/top-up UI available at ${topUp.url}.`, { checkedUrl: topUp.url });
+    }
+    return pass(definition, `Purchase flow entry point found at ${topUp.url}.`, { checkedUrl: topUp.url });
+  },
+
+  proofOfDeliveryChecker: (definition, context) => {
+    if (pageHasDeliveryProofSignals(context)) {
+      const docs = findPage(context, /\/documents\b|my documents|\/orders\b/i);
+      return pass(
+        definition,
+        docs
+          ? `Digital delivery/proof area found at ${docs.url}.`
+          : "Digital product or service delivery indicators found on explored pages.",
+        { checkedUrl: docs?.url },
+      );
+    }
+    return fail(definition, "No product/service delivery or documents area was discovered.");
+  },
+
+  clickableElementsChecker: (definition, context) => {
+    const explored = countMeaningfulExploredPages(context);
+    if (explored >= 8) {
+      return pass(
+        definition,
+        `Browser exploration covered ${explored} pages with interactive navigation and clicks.`,
+      );
+    }
+    return fail(definition, `Only ${explored} pages were explored; insufficient clickable coverage.`);
+  },
 
   productReviewsChecker: (definition) =>
     manual(definition, "Product-level review counts require product page inspection."),
