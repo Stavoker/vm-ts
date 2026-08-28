@@ -11,8 +11,10 @@ import type {
 import { runDefinitionAiReview } from "./ai-helpers";
 import {
   checkLegalPage,
+  detectCompanyInfoMatch,
   fail,
   findPage,
+  getPageSnapshot,
   manual,
   pageText,
   pass,
@@ -27,7 +29,7 @@ const LEGAL_KEYWORDS: Record<string, string[]> = {
   privacy_policy_page: ["privacy"],
   refund_policy_page: ["refund", "returns"],
   delivery_policy_page: ["delivery", "shipping"],
-  payment_method_page: ["payment-method", "payment method", "payments"],
+  payment_method_page: ["payment-method", "payment method", "payments", "stripe", "visa", "mastercard", "gpay"],
   cancellation_policy_page: ["cancellation", "cancel"],
 };
 
@@ -166,39 +168,43 @@ export const HANDLER_REGISTRY: Record<string, RequirementHandler> = {
   },
 
   contactPageChecker: (definition, context) => {
-    const page = findPage(context, /contact|support|help-desk|helpdesk/i);
+    const page = findPage(context, /contact|support|help-desk|helpdesk|help center|customer support/i);
     return page
-      ? pass(definition, `Contact/support page discovered at ${page.url}.`, { checkedUrl: page.url })
-      : fail(definition, "No Contact Us / Support page was discovered.");
+      ? pass(definition, `Contact/support content discovered on ${page.url}.`, { checkedUrl: page.url })
+      : fail(definition, "No Contact Us / Support page or footer support link was discovered.");
   },
 
   contactFormChecker: async (definition, context) => {
-    const page = findPage(context, /contact/i);
-    if (!page) return fail(definition, "No contact page found to inspect for a form.");
-    const html = await fetch(page.url).then((r) => r.text()).catch(() => "");
-    const hasForm = /<form[\s\S]*?<\/form>/i.test(html) && /(email|message|name|phone)/i.test(html);
+    const page = findPage(context, /contact|support/i);
+    if (!page) {
+      return manual(
+        definition,
+        "No dedicated contact page found; site may use support tickets/chat instead of a classic contact form.",
+      );
+    }
+    const snapshot = getPageSnapshot(context, page.url);
+    const hay = `${snapshot?.html || ""}\n${snapshot?.visibleText || ""}`;
+    const hasForm = /<form[\s\S]*?<\/form>/i.test(hay) && /(email|message|name|phone|subject)/i.test(hay);
     return hasForm
-      ? pass(definition, "Contact form elements were detected on the contact page.", { checkedUrl: page.url })
-      : fail(definition, "Contact page exists but no contact form was detected.");
+      ? pass(definition, "Contact form elements were detected.", { checkedUrl: page.url })
+      : manual(definition, "Support/contact area found but no classic contact form detected.", {
+          checkedUrl: page.url,
+        });
   },
 
   companyInfoChecker: async (definition, context) => {
-    const text = pageText(context);
+    const combined = pageText(context);
     const homepage = context.pages.find((p) => p.pageType === "homepage")?.url || context.websiteUrl;
-    const html = await fetch(homepage).then((r) => r.text()).catch(() => "");
-    const combined = `${text}\n${html.toLowerCase()}`;
-    const name = /registered company name displayed/i.test(definition.originalName);
-    const address = /company address displayed/i.test(definition.originalName);
-    const email = /company email displayed/i.test(definition.originalName);
-    const phone = /contact number displayed/i.test(definition.originalName);
-    const ok =
-      (name && /(ltd|limited|llc|gmbh|company|corp|inc)/i.test(combined)) ||
-      (address && /(street|road|avenue|address|postal|zip)/i.test(combined)) ||
-      (email && /@[a-z0-9.-]+\.[a-z]{2,}/i.test(combined)) ||
-      (phone && /(\+?\d[\d\s().-]{7,}\d)/.test(combined));
-    return ok
-      ? pass(definition, "Matching company/contact information pattern was found on the website.", { checkedUrl: homepage })
-      : fail(definition, "Required company information was not detected on discovered pages.");
+    const match = detectCompanyInfoMatch(definition, combined);
+
+    if (match.placeholderIssue) {
+      return fail(definition, match.placeholderIssue, { checkedUrl: homepage });
+    }
+    return match.ok
+      ? pass(definition, "Matching company/contact information was found after full-page browser scan.", {
+          checkedUrl: homepage,
+        })
+      : fail(definition, "Required company information was not detected after scrolling all discovered pages.");
   },
 
   linkChecker: (definition, context) => {
@@ -276,10 +282,14 @@ export const HANDLER_REGISTRY: Record<string, RequirementHandler> = {
 
   logoChecker: async (definition, context) => {
     const homepage = context.pages.find((p) => p.pageType === "homepage")?.url || context.websiteUrl;
-    const html = await fetch(homepage).then((r) => r.text()).catch(() => "");
-    const hasLogo = /<img[^>]+(logo|brand)/i.test(html) || /class=["'][^"']*logo/i.test(html);
+    const snapshot = getPageSnapshot(context, homepage);
+    const hay = `${snapshot?.html || ""}\n${snapshot?.visibleText || ""}`;
+    const hasLogo =
+      /<img[^>]+(logo|brand)/i.test(hay) ||
+      /class=["'][^"']*logo/i.test(hay) ||
+      /alt=["'][^"']*(logo|brand)/i.test(hay);
     return hasLogo
-      ? pass(definition, "Logo element detected on homepage.", { checkedUrl: homepage })
+      ? pass(definition, "Logo element detected on homepage after browser scroll.", { checkedUrl: homepage })
       : fail(definition, "No website logo detected on homepage.");
   },
 
@@ -343,10 +353,12 @@ export const HANDLER_REGISTRY: Record<string, RequirementHandler> = {
 
   productPricingChecker: (definition, context) => {
     const text = pageText(context);
-    const hasPrice = /(?:\$|€|£|usd|eur|gbp)\s?\d+|\d+[.,]\d{2}/i.test(text);
+    const hasPrice =
+      /(?:€|\$|£|usd|eur|gbp)\s?\d+|\d+[.,]\d{2}\s?(?:€|\$|£)?/i.test(text) ||
+      /(?:per generated image|per word|top-up|balance)/i.test(text);
     return hasPrice
-      ? pass(definition, "Price patterns were detected on discovered pages.")
-      : fail(definition, "No product pricing patterns were detected.");
+      ? pass(definition, "Price patterns were detected across scrolled page content.")
+      : fail(definition, "No product pricing patterns were detected after full-page browser scan.");
   },
 
   priceRangeChecker: (definition, context) => {

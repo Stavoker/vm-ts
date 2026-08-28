@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { closeScanBrowser, detectCaptcha, launchScanBrowser, tryLogin } from "../browser/playwright";
+import { exploreWebsiteWithBrowser, scrollPageFully } from "../browser/explore";
 import { MAX_SCAN_DURATION_MS } from "../constants";
 import { crawlWebsite } from "../crawler/crawler";
 import { publishScanEvent } from "../events/bus";
@@ -116,8 +117,49 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
 
     await setScanStatus(sessionId, "running");
     const browser = await launchScanBrowser(sessionId);
-    await browser.page.goto(session.website_url, { waitUntil: "domcontentloaded" });
-    const homepageScreenshot = await browser.page.screenshot({ type: "png" });
+    await emit("browser_exploration_started", "Exploring pages with browser scroll and link discovery");
+
+    const seedUrls = pages.map((page) => page.url);
+    const explored = await exploreWebsiteWithBrowser({
+      page: browser.page,
+      websiteUrl: session.website_url,
+      hostname: session.hostname,
+      seedUrls,
+      onPage: async (page, snapshot) => {
+        await emit("page_explored", `Explored ${page.url} (${snapshot.scrollHeight}px)`, {
+          url: page.url,
+          pageType: page.pageType,
+          placeholders: snapshot.placeholders,
+        });
+      },
+    });
+
+    pages = explored.pages;
+    context.pages = pages;
+    context.pageSnapshots = explored.snapshots;
+
+    await saveDiscoveredPages(
+      sessionId,
+      pages.map((page) => ({
+        url: page.url,
+        page_type: page.pageType,
+        http_status: page.httpStatus,
+        title: page.title,
+        checked: page.checked,
+      })),
+    );
+    await updateScanSession(sessionId, {
+      discovered_pages: pages.length,
+      checked_pages: pages.length,
+      progress_percent: 18,
+    });
+    await emit("browser_exploration_completed", `Browser explored ${pages.length} pages with full scroll`);
+
+    const homepageUrl =
+      pages.find((page) => page.pageType === "homepage")?.url || session.website_url;
+    await browser.page.goto(homepageUrl, { waitUntil: "domcontentloaded" });
+    await scrollPageFully(browser.page);
+    const homepageScreenshot = await browser.page.screenshot({ type: "png", fullPage: true });
     await context.saveScreenshot("homepage", homepageScreenshot);
     context.homepageScreenshotBase64 = `data:image/png;base64,${homepageScreenshot.toString("base64")}`;
 

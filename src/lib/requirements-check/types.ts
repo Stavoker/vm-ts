@@ -91,6 +91,15 @@ export type DiscoveredPage = {
   checked: boolean;
 };
 
+export type PageSnapshot = {
+  url: string;
+  title: string;
+  visibleText: string;
+  html: string;
+  scrollHeight: number;
+  placeholders: string[];
+};
+
 export type ScanCredentials = {
   login?: string;
   password?: string;
@@ -155,6 +164,7 @@ export type ScanContext = {
   hostname: string;
   credentials?: ScanCredentials;
   pages: DiscoveredPage[];
+  pageSnapshots?: Map<string, PageSnapshot>;
   results: Map<string, RequirementCheckResult>;
   externalCache?: Map<string, unknown>;
   homepageScreenshotBase64?: string | null;
