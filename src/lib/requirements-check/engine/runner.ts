@@ -132,6 +132,12 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
           placeholders: snapshot.placeholders,
         });
       },
+      onClickDiscovery: async (fromUrl, discoveredUrl) => {
+        await emit("navigation_discovered", `Button navigation ${fromUrl} -> ${discoveredUrl}`, {
+          fromUrl,
+          discoveredUrl,
+        });
+      },
     });
 
     pages = explored.pages;
