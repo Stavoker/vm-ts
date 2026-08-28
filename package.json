@@ -4,14 +4,15 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run playwright:install && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
     "requirements:seed": "tsx scripts/generate-requirement-definitions-seed.ts",
     "requirements:validate": "tsx scripts/validate-requirement-registry.ts",
-    "postinstall": "playwright install chromium"
+    "playwright:install": "node scripts/install-playwright.mjs",
+    "postinstall": "node scripts/install-playwright.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",

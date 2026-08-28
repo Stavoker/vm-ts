@@ -1,6 +1,11 @@
+import path from "node:path";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { publishScreenshot } from "../events/bus";
 import { NAVIGATION_TIMEOUT_MS } from "../constants";
+
+if (!process.env.PLAYWRIGHT_BROWSERS_PATH) {
+  process.env.PLAYWRIGHT_BROWSERS_PATH = path.join(process.cwd(), ".playwright-browsers");
+}
 
 type ManagedBrowser = {
   browser: Browser;

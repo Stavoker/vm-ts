@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: vm-ts
+    runtime: node
+    buildCommand: npm install && npm run playwright:install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: /opt/render/project/src/.playwright-browsers
+      - key: NODE_VERSION
+        value: "20"

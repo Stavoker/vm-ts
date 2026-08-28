@@ -6,7 +6,7 @@ import {
 } from "@/lib/requirements-check/coverage";
 import { scoreFromResults } from "@/lib/requirements-check/score";
 import { validatePublicWebsiteUrl } from "@/lib/requirements-check/ssrf";
-import { dedupeUrls, normalizeUrl } from "@/lib/requirements-check/url-utils";
+import { dedupeUrls, isCrawlableUrl, normalizeUrl } from "@/lib/requirements-check/url-utils";
 import { REQUIREMENT_DEFINITIONS } from "@/lib/requirements-check/registry/definitions";
 import { mapDefinitionRow } from "@/lib/requirements-check/registry/load-definitions";
 
@@ -92,6 +92,11 @@ describe("url utils", () => {
 
   it("rejects unsupported protocols", () => {
     expect(normalizeUrl("file:///etc/passwd")).toBeNull();
+  });
+
+  it("skips static asset urls during crawl", () => {
+    expect(isCrawlableUrl("https://example.com/_next/static/chunks/app.js")).toBe(false);
+    expect(isCrawlableUrl("https://example.com/login")).toBe(true);
   });
 });
 

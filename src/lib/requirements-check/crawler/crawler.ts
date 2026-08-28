@@ -7,6 +7,7 @@ import type { DiscoveredPage } from "../types";
 import {
   classifyPageType,
   dedupeUrls,
+  isCrawlableUrl,
   isLogoutLink,
   isSameSite,
   normalizeUrl,
@@ -18,7 +19,7 @@ function extractLinks(html: string, baseUrl: string, hostname: string): string[]
   for (const href of hrefs) {
     if (isLogoutLink(href)) continue;
     const normalized = normalizeUrl(href, baseUrl);
-    if (!normalized || !isSameSite(normalized, hostname)) continue;
+    if (!normalized || !isSameSite(normalized, hostname) || !isCrawlableUrl(normalized)) continue;
     out.push(normalized);
   }
   return out;
@@ -36,7 +37,9 @@ async function fetchSitemapUrls(websiteUrl: string, hostname: string): Promise<s
       const locs = [...text.matchAll(/<loc>([^<]+)<\/loc>/gi)].map((m) => m[1].trim());
       for (const loc of locs) {
         const normalized = normalizeUrl(loc);
-        if (normalized && isSameSite(normalized, hostname)) urls.push(normalized);
+        if (normalized && isSameSite(normalized, hostname) && isCrawlableUrl(normalized)) {
+          urls.push(normalized);
+        }
       }
     } catch {
       // ignore sitemap failures
@@ -50,10 +53,14 @@ export async function crawlWebsite(input: {
   hostname: string;
   onPage?: (page: DiscoveredPage) => Promise<void>;
 }): Promise<DiscoveredPage[]> {
-  const queue: Array<{ url: string; depth: number }> = [{ url: normalizeUrl(input.websiteUrl)!, depth: 0 }];
+  const queue: Array<{ url: string; depth: number }> = [];
+  const startUrl = normalizeUrl(input.websiteUrl);
+  if (startUrl) queue.push({ url: startUrl, depth: 0 });
   const discovered = new Map<string, DiscoveredPage>();
   const sitemapUrls = await fetchSitemapUrls(input.websiteUrl, input.hostname);
-  for (const url of sitemapUrls) queue.push({ url, depth: 1 });
+  for (const url of sitemapUrls) {
+    if (isCrawlableUrl(url)) queue.push({ url, depth: 1 });
+  }
 
   while (queue.length > 0 && discovered.size < MAX_DISCOVERED_PAGES) {
     const current = queue.shift();

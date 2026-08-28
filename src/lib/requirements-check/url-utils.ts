@@ -40,6 +40,24 @@ export function isLogoutLink(href: string): boolean {
   return /logout|sign-out|signout|log-out/i.test(href);
 }
 
+export function isCrawlableUrl(url: string): boolean {
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    if (pathname.startsWith("/_next/static/")) return false;
+    if (pathname.startsWith("/static/")) return false;
+    if (
+      /\.(js|mjs|css|woff2?|ttf|eot|svg|png|jpe?g|gif|webp|avif|ico|map|json|xml|txt|pdf|zip|mp4|webm)$/i.test(
+        pathname,
+      )
+    ) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function classifyPageType(url: string, title: string, text: string): import("./types").PageType {
   const hay = `${url} ${title} ${text}`.toLowerCase();
   if (/(privacy|terms|refund|delivery|cancellation|cookie|legal)/.test(hay)) return "legal";
