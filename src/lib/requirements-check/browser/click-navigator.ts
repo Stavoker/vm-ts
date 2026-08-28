@@ -23,6 +23,13 @@ type ClickTarget = {
   hints: MenuTriggerHints;
 };
 
+export type ClickActivity =
+  | { type: "click"; pageUrl: string; label: string; targetKind: "button" | "menu-trigger" }
+  | { type: "menu_item"; pageUrl: string; menuLabel: string; itemLabel: string }
+  | { type: "navigated"; fromUrl: string; toUrl: string; label: string }
+  | { type: "returned"; fromUrl: string; toUrl: string; label: string }
+  | { type: "discovered"; pageUrl: string; url: string; via: string };
+
 async function collectClickTargets(page: Page): Promise<ClickTarget[]> {
   return page.evaluate(() => {
     const out: Array<{
@@ -157,10 +164,19 @@ async function clickTargetAndCollectUrls(input: {
   hostname: string;
   seen: Set<string>;
   discovered: string[];
+  onActivity?: (activity: ClickActivity) => Promise<void>;
 }): Promise<void> {
   const beforeUrl = input.page.url();
   const locator = input.page.locator(`[data-vitrina-click-id="${input.target.id}"]`).first();
   if (!(await locator.count())) return;
+
+  const clickLabel = input.target.label || input.target.kind;
+  await input.onActivity?.({
+    type: "click",
+    pageUrl: beforeUrl,
+    label: clickLabel,
+    targetKind: input.target.kind,
+  });
 
   await locator.click({ timeout: 4_000 });
   await input.page.waitForTimeout(
@@ -179,13 +195,34 @@ async function clickTargetAndCollectUrls(input: {
   for (const link of links) {
     if (!input.seen.has(link) && !input.discovered.includes(link)) {
       input.discovered.push(link);
+      await input.onActivity?.({
+        type: "discovered",
+        pageUrl: beforeUrl,
+        url: link,
+        via: clickLabel,
+      });
     }
   }
 
   const afterUrl = input.page.url();
+  if (afterUrl !== beforeUrl) {
+    await input.onActivity?.({
+      type: "navigated",
+      fromUrl: beforeUrl,
+      toUrl: afterUrl,
+      label: clickLabel,
+    });
+  }
+
   const normalizedAfter = normalizeDiscoveredUrl(afterUrl, input.baseUrl, input.hostname);
   if (normalizedAfter && !input.seen.has(normalizedAfter) && !input.discovered.includes(normalizedAfter)) {
     input.discovered.push(normalizedAfter);
+    await input.onActivity?.({
+      type: "discovered",
+      pageUrl: beforeUrl,
+      url: normalizedAfter,
+      via: clickLabel,
+    });
   }
 
   if (input.target.kind === "menu-trigger" && afterUrl === beforeUrl) {
@@ -204,18 +241,42 @@ async function clickTargetAndCollectUrls(input: {
         const normalized = normalizeDiscoveredUrl(itemHref, input.baseUrl, input.hostname);
         if (normalized && !input.seen.has(normalized) && !input.discovered.includes(normalized)) {
           input.discovered.push(normalized);
+          await input.onActivity?.({
+            type: "discovered",
+            pageUrl: beforeUrl,
+            url: normalized,
+            via: `${clickLabel} → ${itemLabel}`,
+          });
         }
         continue;
       }
 
       try {
+        await input.onActivity?.({
+          type: "menu_item",
+          pageUrl: beforeUrl,
+          menuLabel: clickLabel,
+          itemLabel,
+        });
         await item.click({ timeout: 3_000 });
         await input.page.waitForTimeout(BUTTON_CLICK_PAUSE_MS);
         const menuNavUrl = normalizeDiscoveredUrl(input.page.url(), input.baseUrl, input.hostname);
         if (menuNavUrl && !input.seen.has(menuNavUrl) && !input.discovered.includes(menuNavUrl)) {
           input.discovered.push(menuNavUrl);
+          await input.onActivity?.({
+            type: "discovered",
+            pageUrl: beforeUrl,
+            url: menuNavUrl,
+            via: `${clickLabel} → ${itemLabel}`,
+          });
         }
         if (input.page.url() !== beforeUrl) {
+          await input.onActivity?.({
+            type: "navigated",
+            fromUrl: beforeUrl,
+            toUrl: input.page.url(),
+            label: `${clickLabel} → ${itemLabel}`,
+          });
           await input.page.goto(beforeUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
           await input.page.waitForTimeout(250);
           await locator.click({ timeout: 4_000 }).catch(() => null);
@@ -228,6 +289,12 @@ async function clickTargetAndCollectUrls(input: {
   }
 
   if (input.page.url() !== beforeUrl) {
+    await input.onActivity?.({
+      type: "returned",
+      fromUrl: input.page.url(),
+      toUrl: beforeUrl,
+      label: clickLabel,
+    });
     await input.page.goto(beforeUrl, { waitUntil: "domcontentloaded", timeout: 45_000 }).catch(() => null);
     await input.page.waitForTimeout(250);
   } else if (input.target.kind === "menu-trigger") {
@@ -242,6 +309,7 @@ export async function discoverUrlsViaButtonClicks(input: {
   seen: Set<string>;
   budget: { remaining: number };
   maxPerPage?: number;
+  onActivity?: (activity: ClickActivity) => Promise<void>;
 }): Promise<string[]> {
   const maxPerPage = input.maxPerPage ?? MAX_BUTTON_CLICKS_PER_PAGE;
   const discovered: string[] = [];
@@ -271,6 +339,7 @@ export async function discoverUrlsViaButtonClicks(input: {
         hostname: input.hostname,
         seen: input.seen,
         discovered,
+        onActivity: input.onActivity,
       });
       input.budget.remaining -= 1;
       clicksOnPage += 1;

@@ -14,6 +14,28 @@ const STATUS_DOT: Record<RequirementResultStatus, string> = {
   FAIL: "bg-red-500",
 };
 
+const ACTIVITY_EVENT_STYLE: Record<string, string> = {
+  button_clicked: "text-violet-700",
+  menu_item_clicked: "text-violet-600",
+  page_navigated: "text-blue-700",
+  page_returned: "text-blue-500",
+  url_discovered: "text-cyan-700",
+  navigation_discovered: "text-cyan-600",
+  page_opened: "text-indigo-700",
+  page_scroll: "text-gray-500",
+  page_explored: "text-emerald-700",
+  login_step: "text-amber-700",
+  login_successful: "text-green-700",
+  login_failed: "text-red-600",
+  requirement_started: "text-gray-700",
+  requirement_completed: "text-gray-600",
+  error: "text-red-700",
+};
+
+function activityEventLabel(eventType: string): string {
+  return eventType.replace(/_/g, " ");
+}
+
 function formatDuration(ms: number | null) {
   if (!ms) return "—";
   const sec = Math.round(ms / 1000);
@@ -422,10 +444,21 @@ export function RequirementsCheckPanel() {
       {activeSession && events.length > 0 ? (
         <section className="rounded border border-[var(--border)] bg-white p-4">
           <h3 className="mb-2 text-sm font-semibold">Activity log</h3>
-          <div className="max-h-48 overflow-y-auto text-xs text-gray-600">
-            {events.slice(-40).map((event) => (
-              <div key={event.id || `${event.created_at}-${event.message}`}>
-                {new Date(event.created_at).toLocaleTimeString()} · {event.message}
+          <div className="max-h-72 overflow-y-auto font-mono text-[11px] leading-5 text-gray-600">
+            {events.slice(-120).map((event) => (
+              <div
+                key={event.id || `${event.created_at}-${event.message}`}
+                className="border-b border-gray-50 py-1 last:border-0"
+              >
+                <span className="text-gray-400">{new Date(event.created_at).toLocaleTimeString()}</span>
+                {" · "}
+                <span className="uppercase tracking-wide text-[10px] text-gray-400">
+                  {activityEventLabel(event.event_type)}
+                </span>
+                {" · "}
+                <span className={ACTIVITY_EVENT_STYLE[event.event_type] || "text-gray-700"}>
+                  {event.message}
+                </span>
               </div>
             ))}
           </div>

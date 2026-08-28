@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { closeScanBrowser, detectCaptcha, launchScanBrowser, tryLogin } from "../browser/playwright";
+import { createBrowserActivityHooks } from "../browser/activity-log";
+import { closeScanBrowser, launchScanBrowser, tryLogin } from "../browser/playwright";
 import {
   capturePageSnapshot,
   exploreWebsiteWithBrowser,
@@ -125,11 +126,16 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
     await setScanStatus(sessionId, "running");
     const browser = await launchScanBrowser(sessionId);
     const landingUrl = normalizeUrl(session.website_url) || session.website_url;
+    const browserActivity = createBrowserActivityHooks({
+      emit,
+      setCurrent: context.setCurrent,
+    });
 
+    await emit("page_opened", `Opened landing page ${landingUrl}`, { url: landingUrl });
     await browser.page.goto(landingUrl, { waitUntil: "domcontentloaded" });
     await emit("landing_exploration_started", "Scrolling landing page before login");
     await context.setCurrent(landingUrl, "Scrolling landing page");
-    await scrollPageFully(browser.page);
+    await scrollPageFully(browser.page, { onProgress: browserActivity.onScrollProgress });
     const landingSnapshot = await capturePageSnapshot(browser.page, landingUrl);
     const landingScreenshot = await browser.page.screenshot({ type: "png", fullPage: true });
     await context.saveScreenshot("homepage", landingScreenshot);
@@ -150,7 +156,9 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
     if (credentials?.login && credentials.password) {
       await emit("login_started", "Logging into platform after landing page review");
       await context.setCurrent(null, "Logging in");
-      const login = await tryLogin(browser.page, session.website_url, credentials);
+      const login = await tryLogin(browser.page, session.website_url, credentials, async (message, payload) => {
+        await emit("login_step", message, payload);
+      });
       if (login.message.includes("CAPTCHA")) {
         await setScanStatus(sessionId, "paused_for_user");
         await updateScanSession(sessionId, {
@@ -181,7 +189,9 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
         seedUrls: platformSeedUrls,
         excludeUrls: landingUrls,
         clickBudget: createClickBudget(80),
+        ...browserActivity,
         onPage: async (page, snapshot) => {
+          await context.setCurrent(page.url, "Exploring platform page");
           await emit("page_explored", `Explored platform ${page.url}`, {
             url: page.url,
             pageType: page.pageType,
@@ -189,7 +199,7 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
           });
         },
         onClickDiscovery: async (fromUrl, discoveredUrl) => {
-          await emit("navigation_discovered", `Platform navigation ${fromUrl} -> ${discoveredUrl}`, {
+          await emit("navigation_discovered", `Queued platform page ${discoveredUrl}`, {
             fromUrl,
             discoveredUrl,
           });
@@ -207,7 +217,9 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
         websiteUrl: landingUrl,
         hostname: session.hostname,
         seedUrls: pages.map((page) => page.url),
+        ...browserActivity,
         onPage: async (page, snapshot) => {
+          await context.setCurrent(page.url, "Exploring public page");
           await emit("page_explored", `Explored ${page.url} (${snapshot.scrollHeight}px)`, {
             url: page.url,
             pageType: page.pageType,
@@ -215,7 +227,7 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
           });
         },
         onClickDiscovery: async (fromUrl, discoveredUrl) => {
-          await emit("navigation_discovered", `Navigation ${fromUrl} -> ${discoveredUrl}`, {
+          await emit("navigation_discovered", `Queued page ${discoveredUrl}`, {
             fromUrl,
             discoveredUrl,
           });

@@ -16,7 +16,7 @@ import {
   isSameSite,
   normalizeUrl,
 } from "../url-utils";
-import { createClickBudget, discoverUrlsViaButtonClicks } from "./click-navigator";
+import { createClickBudget, discoverUrlsViaButtonClicks, type ClickActivity } from "./click-navigator";
 
 export function mergeExplorationResults(
   base: { pages: DiscoveredPage[]; snapshots: Map<string, PageSnapshot> },
@@ -31,9 +31,23 @@ export function mergeExplorationResults(
   return { pages: [...byUrl.values()], snapshots };
 }
 
-export async function scrollPageFully(page: Page): Promise<number> {
+export type ScrollProgress = {
+  step: number;
+  maxSteps: number;
+  scrollHeight: number;
+  scrollY: number;
+  url: string;
+};
+
+export async function scrollPageFully(
+  page: Page,
+  options?: {
+    onProgress?: (progress: ScrollProgress) => Promise<void>;
+  },
+): Promise<number> {
   let previousHeight = -1;
   let stablePasses = 0;
+  const url = page.url();
 
   for (let step = 0; step < BROWSER_SCROLL_MAX_STEPS; step += 1) {
     const metrics = await page.evaluate(() => ({
@@ -47,12 +61,31 @@ export async function scrollPageFully(page: Page): Promise<number> {
       metrics.scrollY + metrics.innerHeight >= metrics.scrollHeight - 4
     ) {
       stablePasses += 1;
-      if (stablePasses >= 2) break;
+      if (stablePasses >= 2) {
+        await options?.onProgress?.({
+          step: step + 1,
+          maxSteps: BROWSER_SCROLL_MAX_STEPS,
+          scrollHeight: metrics.scrollHeight,
+          scrollY: metrics.scrollY,
+          url,
+        });
+        break;
+      }
     } else {
       stablePasses = 0;
     }
 
     previousHeight = metrics.scrollHeight;
+    if (step === 0 || step % 4 === 0) {
+      await options?.onProgress?.({
+        step: step + 1,
+        maxSteps: BROWSER_SCROLL_MAX_STEPS,
+        scrollHeight: metrics.scrollHeight,
+        scrollY: metrics.scrollY,
+        url,
+      });
+    }
+
     await page.evaluate(() => {
       window.scrollBy(0, Math.max(window.innerHeight * 0.85, 700));
     });
@@ -115,6 +148,9 @@ export async function exploreWebsiteWithBrowser(input: {
   seedUrls?: string[];
   excludeUrls?: Set<string>;
   onPage?: (page: DiscoveredPage, snapshot: PageSnapshot) => Promise<void>;
+  onNavigate?: (url: string) => Promise<void>;
+  onScrollProgress?: (progress: ScrollProgress) => Promise<void>;
+  onClickActivity?: (activity: ClickActivity) => Promise<void>;
   onClickDiscovery?: (fromUrl: string, discoveredUrl: string, label?: string) => Promise<void>;
   clickBudget?: { remaining: number };
 }): Promise<{ pages: DiscoveredPage[]; snapshots: Map<string, PageSnapshot> }> {
@@ -151,13 +187,14 @@ export async function exploreWebsiteWithBrowser(input: {
 
     let httpStatus: number | null = null;
     try {
+      await input.onNavigate?.(current.url);
       const response = await input.page.goto(current.url, {
         waitUntil: "domcontentloaded",
         timeout: 45_000,
       });
       httpStatus = response?.status() ?? null;
       await input.page.waitForTimeout(500);
-      await scrollPageFully(input.page);
+      await scrollPageFully(input.page, { onProgress: input.onScrollProgress });
       const snapshot = await capturePageSnapshot(input.page, current.url);
       snapshots.set(current.url, snapshot);
 
@@ -188,6 +225,7 @@ export async function exploreWebsiteWithBrowser(input: {
           hostname: input.hostname,
           seen,
           budget: clickBudget,
+          onActivity: input.onClickActivity,
         });
         for (const link of clickDiscovered) {
           if (!isExcludedScanUrl(link, excluded)) {

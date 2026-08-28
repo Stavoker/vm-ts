@@ -71,26 +71,36 @@ export async function tryLogin(
   page: Page,
   websiteUrl: string,
   credentials: { login?: string; password?: string; loginPageUrl?: string },
+  onStep?: (message: string, payload?: Record<string, unknown>) => Promise<void>,
 ): Promise<{ ok: boolean; message: string }> {
   if (!credentials.login || !credentials.password) {
     return { ok: false, message: "Credentials not provided" };
   }
 
   const loginUrl = credentials.loginPageUrl || new URL("/login", websiteUrl).toString();
+  await onStep?.(`Opening login page: ${loginUrl}`, { loginUrl });
   await page.goto(loginUrl, { waitUntil: "domcontentloaded" });
   if (await detectCaptcha(page)) {
+    await onStep?.("CAPTCHA detected on login page", { loginUrl });
     return { ok: false, message: "CAPTCHA detected" };
   }
 
   const emailSelector = 'input[type="email"], input[name*="email" i], input[name*="login" i], input[type="text"]';
   const passwordSelector = 'input[type="password"]';
+  await onStep?.(`Filling login field for ${credentials.login}`, { login: credentials.login });
   await page.fill(emailSelector, credentials.login).catch(() => undefined);
   await page.fill(passwordSelector, credentials.password).catch(() => undefined);
+  await onStep?.("Submitting login form", { loginUrl });
   await page.locator('button[type="submit"], input[type="submit"]').first().click({ timeout: 5000 }).catch(() => undefined);
   await page.waitForTimeout(2500);
 
   const current = page.url();
   const loggedIn = !/login|signin|sign-in/i.test(current);
+  if (loggedIn) {
+    await onStep?.(`Login successful, redirected to ${current}`, { currentUrl: current });
+  } else {
+    await onStep?.("Login could not be confirmed — still on login page", { currentUrl: current });
+  }
   return loggedIn
     ? { ok: true, message: `Login appears successful (${current})` }
     : { ok: false, message: "Login could not be confirmed automatically" };
