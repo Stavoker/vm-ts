@@ -91,11 +91,23 @@ export async function tryLogin(
   await page.fill(emailSelector, credentials.login).catch(() => undefined);
   await page.fill(passwordSelector, credentials.password).catch(() => undefined);
   await onStep?.("Submitting login form", { loginUrl });
-  await page.locator('button[type="submit"], input[type="submit"]').first().click({ timeout: 5000 }).catch(() => undefined);
-  await page.waitForTimeout(2500);
+
+  const submitButton = page
+    .locator('button[type="submit"], input[type="submit"], button:has-text("Sign in"), button:has-text("Log in"), button:has-text("Login")')
+    .first();
+  await submitButton.click({ timeout: 5000 }).catch(() => undefined);
+
+  await Promise.race([
+    page.waitForURL((url) => !/\/login|signin|sign-in/i.test(url.pathname), { timeout: 8000 }).catch(() => null),
+    page.waitForFunction(() => !document.querySelector('input[type="password"]'), { timeout: 8000 }).catch(() => null),
+  ]);
+  await page.waitForTimeout(1500);
 
   const current = page.url();
-  const loggedIn = !/login|signin|sign-in/i.test(current);
+  const onLoginPath = /\/login|signin|sign-in/i.test(current);
+  const hasPasswordField = await page.locator(passwordSelector).count().then((count) => count > 0).catch(() => true);
+  const loggedIn =
+    /\/dashboard|\/app|\/account|\/portal/i.test(current) || (!onLoginPath && !hasPasswordField);
   if (loggedIn) {
     await onStep?.(`Login successful, redirected to ${current}`, { currentUrl: current });
   } else {

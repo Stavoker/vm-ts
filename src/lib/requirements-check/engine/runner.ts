@@ -32,7 +32,11 @@ import type {
   ScanContext,
   ScanCredentials,
 } from "../types";
-import { buildLandingUrlSet, normalizeUrl } from "../url-utils";
+import {
+  buildAuthenticatedExploreExclusions,
+  filterPlatformSeedUrls,
+  normalizeUrl,
+} from "../url-utils";
 
 const cancelled = new Set<string>();
 const paused = new Set<string>();
@@ -172,24 +176,29 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
       }
     }
 
-    const landingUrls = buildLandingUrlSet(session.website_url, pages);
-    const platformSeedUrls = pages
-      .map((page) => page.url)
-      .filter((url) => !landingUrls.has(normalizeUrl(url) || url));
-
     if (loginOk) {
+      const platformExcludeUrls = buildAuthenticatedExploreExclusions(session.website_url, pages);
+      const platformSeedUrls = filterPlatformSeedUrls(session.website_url, pages, [
+        browser.page.url(),
+      ]);
+
       await emit(
         "platform_exploration_started",
         "Exploring authenticated platform pages without returning to landing",
       );
       const explored = await exploreWebsiteWithBrowser({
         page: browser.page,
-        websiteUrl: browser.page.url(),
+        websiteUrl: session.website_url,
         hostname: session.hostname,
         seedUrls: platformSeedUrls,
-        excludeUrls: landingUrls,
+        excludeUrls: platformExcludeUrls,
+        authenticatedCrawl: true,
         clickBudget: createClickBudget(80),
         ...browserActivity,
+        onExploreProgress: async (visitedPages) => {
+          const progress = Math.min(19, 10 + visitedPages);
+          await updateScanSession(sessionId, { progress_percent: progress });
+        },
         onPage: async (page, snapshot) => {
           await context.setCurrent(page.url, "Exploring platform page");
           await emit("page_explored", `Explored platform ${page.url}`, {
@@ -218,6 +227,10 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
         hostname: session.hostname,
         seedUrls: pages.map((page) => page.url),
         ...browserActivity,
+        onExploreProgress: async (visitedPages) => {
+          const progress = Math.min(19, 10 + visitedPages);
+          await updateScanSession(sessionId, { progress_percent: progress });
+        },
         onPage: async (page, snapshot) => {
           await context.setCurrent(page.url, "Exploring public page");
           await emit("page_explored", `Explored ${page.url} (${snapshot.scrollHeight}px)`, {

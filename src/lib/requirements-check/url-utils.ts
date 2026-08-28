@@ -58,6 +58,39 @@ export function isCrawlableUrl(url: string): boolean {
   }
 }
 
+const AUTH_PLATFORM_PATH =
+  /\/(dashboard|app|account|portal|admin|billing|wallet|settings|orders|credits|top-up|topup|checkout|payment|profile|user|members|workspace|console|support|documents|invoices|subscription|subscriptions|ai-writer|ai-image|two-factor)(\/|$)/i;
+
+const PUBLIC_ROUTE_PATH =
+  /^\/(login|signin|sign-in|signup|sign-up|register|forgot-password|reset-password|pricing|features|about|contact|blog|faq)(\/|$)/i;
+
+export function isLikelyAuthenticatedPath(url: string): boolean {
+  try {
+    return AUTH_PLATFORM_PATH.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
+export function isPublicRouteUrl(url: string, websiteUrl: string): boolean {
+  const normalized = normalizeUrl(url);
+  const root = normalizeUrl(websiteUrl);
+  if (!normalized) return true;
+  if (root && normalized === root) return true;
+
+  try {
+    const pathname = new URL(normalized).pathname.toLowerCase();
+    if (pathname === "/" || pathname === "") return true;
+    if (PUBLIC_ROUTE_PATH.test(pathname)) return true;
+    if (/^\/legal(\/|$)/.test(pathname)) return true;
+    if (/\/(privacy|terms|cookie|refund|legal)(\/|$|-)/.test(pathname)) return true;
+  } catch {
+    return true;
+  }
+
+  return false;
+}
+
 export function buildLandingUrlSet(
   websiteUrl: string,
   pages: Array<{ url: string; pageType?: string }> = [],
@@ -84,6 +117,54 @@ export function buildLandingUrlSet(
   }
 
   return excluded;
+}
+
+export function buildAuthenticatedExploreExclusions(
+  websiteUrl: string,
+  pages: Array<{ url: string; pageType?: string }> = [],
+): Set<string> {
+  const excluded = buildLandingUrlSet(websiteUrl, pages);
+
+  for (const page of pages) {
+    const normalized = normalizeUrl(page.url);
+    if (!normalized) continue;
+    if (isPublicRouteUrl(normalized, websiteUrl)) excluded.add(normalized);
+    if (page.pageType === "login" || page.pageType === "registration" || page.pageType === "legal") {
+      excluded.add(normalized);
+    }
+  }
+
+  return excluded;
+}
+
+export function filterPlatformSeedUrls(
+  websiteUrl: string,
+  pages: Array<{ url: string; pageType?: string }>,
+  extraUrls: string[] = [],
+): string[] {
+  const excluded = buildAuthenticatedExploreExclusions(websiteUrl, pages);
+  const seeds = new Set<string>();
+
+  for (const url of extraUrls) {
+    const normalized = normalizeUrl(url);
+    if (!normalized || excluded.has(normalized) || isPublicRouteUrl(normalized, websiteUrl)) continue;
+    if (isLikelyAuthenticatedPath(normalized)) seeds.add(normalized);
+  }
+
+  for (const page of pages) {
+    const normalized = normalizeUrl(page.url);
+    if (!normalized || excluded.has(normalized) || isPublicRouteUrl(normalized, websiteUrl)) continue;
+    if (
+      isLikelyAuthenticatedPath(normalized) ||
+      page.pageType === "account" ||
+      page.pageType === "cart" ||
+      page.pageType === "checkout"
+    ) {
+      seeds.add(normalized);
+    }
+  }
+
+  return [...seeds];
 }
 
 export function isExcludedScanUrl(url: string, excluded: Set<string>): boolean {

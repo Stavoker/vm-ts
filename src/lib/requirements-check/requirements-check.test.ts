@@ -6,7 +6,7 @@ import {
 } from "@/lib/requirements-check/coverage";
 import { scoreFromResults } from "@/lib/requirements-check/score";
 import { validatePublicWebsiteUrl } from "@/lib/requirements-check/ssrf";
-import { dedupeUrls, isCrawlableUrl, normalizeUrl, buildLandingUrlSet, isExcludedScanUrl } from "@/lib/requirements-check/url-utils";
+import { dedupeUrls, isCrawlableUrl, normalizeUrl, buildLandingUrlSet, buildAuthenticatedExploreExclusions, filterPlatformSeedUrls, isExcludedScanUrl, isPublicRouteUrl, isLikelyAuthenticatedPath } from "@/lib/requirements-check/url-utils";
 import { REQUIREMENT_DEFINITIONS } from "@/lib/requirements-check/registry/definitions";
 import { mapDefinitionRow } from "@/lib/requirements-check/registry/load-definitions";
 
@@ -108,6 +108,24 @@ describe("url utils", () => {
     expect(isExcludedScanUrl("https://example.com/", excluded)).toBe(true);
     expect(isExcludedScanUrl("https://example.com/dashboard", excluded)).toBe(false);
     expect(isExcludedScanUrl("https://example.com/pricing", excluded)).toBe(false);
+  });
+
+  it("excludes public routes from authenticated platform crawl", () => {
+    const pages = [
+      { url: "https://avelnix.net/", pageType: "homepage" },
+      { url: "https://avelnix.net/login", pageType: "login" },
+      { url: "https://avelnix.net/dashboard", pageType: "account" },
+      { url: "https://avelnix.net/legal/privacy-policy", pageType: "legal" },
+    ];
+    const excluded = buildAuthenticatedExploreExclusions("https://avelnix.net/", pages);
+    expect(isPublicRouteUrl("https://avelnix.net/login", "https://avelnix.net/")).toBe(true);
+    expect(isPublicRouteUrl("https://avelnix.net/dashboard/top-up", "https://avelnix.net/")).toBe(false);
+    expect(isExcludedScanUrl("https://avelnix.net/login", excluded)).toBe(true);
+    expect(isExcludedScanUrl("https://avelnix.net/dashboard/credits", excluded)).toBe(false);
+
+    const seeds = filterPlatformSeedUrls("https://avelnix.net/", pages, ["https://avelnix.net/dashboard"]);
+    expect(seeds).toEqual(["https://avelnix.net/dashboard"]);
+    expect(isLikelyAuthenticatedPath("https://avelnix.net/dashboard/top-up")).toBe(true);
   });
 });
 

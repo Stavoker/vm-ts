@@ -6,9 +6,10 @@ import {
   MAX_MENU_TRIGGERS_PER_PAGE,
   MENU_OPEN_PAUSE_MS,
 } from "../constants";
-import { dedupeUrls, isCrawlableUrl, isLogoutLink, isSameSite, normalizeUrl } from "../url-utils";
+import { dedupeUrls, isCrawlableUrl, isLogoutLink, isSameSite, isPublicRouteUrl, normalizeUrl } from "../url-utils";
 import {
   isDangerousFormSubmit,
+  isAuthCrawlBlockedClick,
   isMenuTriggerTarget,
   isSafeBillingFlowClick,
   isSafeNavigationClick,
@@ -145,12 +146,14 @@ async function closeOpenMenus(page: Page): Promise<void> {
   await page.waitForTimeout(150);
 }
 
-function shouldClickTarget(target: ClickTarget): boolean {
+function shouldClickTarget(target: ClickTarget, authenticatedCrawl?: boolean): boolean {
+  const clickOptions = { authenticatedCrawl };
   if (isDangerousFormSubmit(target.label, target.inForm)) return false;
+  if (authenticatedCrawl && isAuthCrawlBlockedClick(target.label)) return false;
   if (target.kind === "menu-trigger") {
     return isMenuTriggerTarget(target.label, target.hints);
   }
-  return isSafeNavigationClick(target.label) || isSafeBillingFlowClick(target.label);
+  return isSafeNavigationClick(target.label, clickOptions) || isSafeBillingFlowClick(target.label, clickOptions);
 }
 
 function isBlockedClickLabel(label: string): boolean {
@@ -161,9 +164,11 @@ async function clickTargetAndCollectUrls(input: {
   page: Page;
   target: ClickTarget;
   baseUrl: string;
+  websiteUrl: string;
   hostname: string;
   seen: Set<string>;
   discovered: string[];
+  authenticatedCrawl?: boolean;
   onActivity?: (activity: ClickActivity) => Promise<void>;
 }): Promise<void> {
   const beforeUrl = input.page.url();
@@ -171,6 +176,19 @@ async function clickTargetAndCollectUrls(input: {
   if (!(await locator.count())) return;
 
   const clickLabel = input.target.label || input.target.kind;
+  const acceptUrl = (url: string) =>
+    !(input.authenticatedCrawl && isPublicRouteUrl(url, input.websiteUrl));
+  const pushDiscovered = async (url: string, via: string) => {
+    if (!acceptUrl(url)) return;
+    if (input.seen.has(url) || input.discovered.includes(url)) return;
+    input.discovered.push(url);
+    await input.onActivity?.({
+      type: "discovered",
+      pageUrl: beforeUrl,
+      url,
+      via,
+    });
+  };
   await input.onActivity?.({
     type: "click",
     pageUrl: beforeUrl,
@@ -193,15 +211,7 @@ async function clickTargetAndCollectUrls(input: {
 
   const links = await extractAllVisibleLinks(input.page, input.baseUrl, input.hostname);
   for (const link of links) {
-    if (!input.seen.has(link) && !input.discovered.includes(link)) {
-      input.discovered.push(link);
-      await input.onActivity?.({
-        type: "discovered",
-        pageUrl: beforeUrl,
-        url: link,
-        via: clickLabel,
-      });
-    }
+    await pushDiscovered(link, clickLabel);
   }
 
   const afterUrl = input.page.url();
@@ -215,14 +225,8 @@ async function clickTargetAndCollectUrls(input: {
   }
 
   const normalizedAfter = normalizeDiscoveredUrl(afterUrl, input.baseUrl, input.hostname);
-  if (normalizedAfter && !input.seen.has(normalizedAfter) && !input.discovered.includes(normalizedAfter)) {
-    input.discovered.push(normalizedAfter);
-    await input.onActivity?.({
-      type: "discovered",
-      pageUrl: beforeUrl,
-      url: normalizedAfter,
-      via: clickLabel,
-    });
+  if (normalizedAfter) {
+    await pushDiscovered(normalizedAfter, clickLabel);
   }
 
   if (input.target.kind === "menu-trigger" && afterUrl === beforeUrl) {
@@ -233,20 +237,17 @@ async function clickTargetAndCollectUrls(input: {
     for (let i = 0; i < count; i += 1) {
       const item = menuItems.nth(i);
       const itemLabel = ((await item.innerText().catch(() => "")) || "").replace(/\s+/g, " ").trim();
-      if (!itemLabel || (!isSafeNavigationClick(itemLabel) && !isSafeBillingFlowClick(itemLabel))) continue;
+      const clickOptions = { authenticatedCrawl: input.authenticatedCrawl };
+      if (!itemLabel || (!isSafeNavigationClick(itemLabel, clickOptions) && !isSafeBillingFlowClick(itemLabel, clickOptions))) {
+        continue;
+      }
       if (isBlockedClickLabel(itemLabel)) continue;
 
       const itemHref = await item.getAttribute("href").catch(() => null);
       if (itemHref) {
         const normalized = normalizeDiscoveredUrl(itemHref, input.baseUrl, input.hostname);
-        if (normalized && !input.seen.has(normalized) && !input.discovered.includes(normalized)) {
-          input.discovered.push(normalized);
-          await input.onActivity?.({
-            type: "discovered",
-            pageUrl: beforeUrl,
-            url: normalized,
-            via: `${clickLabel} → ${itemLabel}`,
-          });
+        if (normalized) {
+          await pushDiscovered(normalized, `${clickLabel} → ${itemLabel}`);
         }
         continue;
       }
@@ -261,14 +262,8 @@ async function clickTargetAndCollectUrls(input: {
         await item.click({ timeout: 3_000 });
         await input.page.waitForTimeout(BUTTON_CLICK_PAUSE_MS);
         const menuNavUrl = normalizeDiscoveredUrl(input.page.url(), input.baseUrl, input.hostname);
-        if (menuNavUrl && !input.seen.has(menuNavUrl) && !input.discovered.includes(menuNavUrl)) {
-          input.discovered.push(menuNavUrl);
-          await input.onActivity?.({
-            type: "discovered",
-            pageUrl: beforeUrl,
-            url: menuNavUrl,
-            via: `${clickLabel} → ${itemLabel}`,
-          });
+        if (menuNavUrl) {
+          await pushDiscovered(menuNavUrl, `${clickLabel} → ${itemLabel}`);
         }
         if (input.page.url() !== beforeUrl) {
           await input.onActivity?.({
@@ -305,10 +300,12 @@ async function clickTargetAndCollectUrls(input: {
 export async function discoverUrlsViaButtonClicks(input: {
   page: Page;
   baseUrl: string;
+  websiteUrl: string;
   hostname: string;
   seen: Set<string>;
   budget: { remaining: number };
   maxPerPage?: number;
+  authenticatedCrawl?: boolean;
   onActivity?: (activity: ClickActivity) => Promise<void>;
 }): Promise<string[]> {
   const maxPerPage = input.maxPerPage ?? MAX_BUTTON_CLICKS_PER_PAGE;
@@ -327,7 +324,7 @@ export async function discoverUrlsViaButtonClicks(input: {
     if (input.budget.remaining <= 0 || clicksOnPage >= maxPerPage) break;
     const clickKey = `${target.kind}:${target.label.toLowerCase() || target.id}`;
     if (clickedKeys.has(clickKey)) continue;
-    if (!shouldClickTarget(target)) continue;
+    if (!shouldClickTarget(target, input.authenticatedCrawl)) continue;
 
     clickedKeys.add(clickKey);
 
@@ -336,9 +333,11 @@ export async function discoverUrlsViaButtonClicks(input: {
         page: input.page,
         target,
         baseUrl: input.baseUrl,
+        websiteUrl: input.websiteUrl,
         hostname: input.hostname,
         seen: input.seen,
         discovered,
+        authenticatedCrawl: input.authenticatedCrawl,
         onActivity: input.onActivity,
       });
       input.budget.remaining -= 1;

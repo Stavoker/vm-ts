@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isAuthCrawlBlockedClick,
   isMenuTriggerTarget,
   isSafeBillingFlowClick,
   isSafeNavigationClick,
@@ -35,5 +36,13 @@ describe("button click discovery safety", () => {
     expect(isSafeNavigationClick("Pay now")).toBe(false);
     expect(isSafeNavigationClick("Place order")).toBe(false);
     expect(isSafeNavigationClick("Delete account")).toBe(false);
+  });
+
+  it("blocks auth-related clicks during authenticated crawl", () => {
+    expect(isAuthCrawlBlockedClick("Sign in")).toBe(true);
+    expect(isAuthCrawlBlockedClick("Show password")).toBe(true);
+    expect(isSafeNavigationClick("Login", { authenticatedCrawl: true })).toBe(false);
+    expect(isSafeNavigationClick("Billing", { authenticatedCrawl: true })).toBe(true);
+    expect(isSafeBillingFlowClick("Top up balance", { authenticatedCrawl: true })).toBe(true);
   });
 });

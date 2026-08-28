@@ -13,6 +13,7 @@ import {
   isCrawlableUrl,
   isExcludedScanUrl,
   isLogoutLink,
+  isPublicRouteUrl,
   isSameSite,
   normalizeUrl,
 } from "../url-utils";
@@ -147,9 +148,11 @@ export async function exploreWebsiteWithBrowser(input: {
   hostname: string;
   seedUrls?: string[];
   excludeUrls?: Set<string>;
+  authenticatedCrawl?: boolean;
   onPage?: (page: DiscoveredPage, snapshot: PageSnapshot) => Promise<void>;
   onNavigate?: (url: string) => Promise<void>;
   onScrollProgress?: (progress: ScrollProgress) => Promise<void>;
+  onExploreProgress?: (visitedPages: number) => Promise<void>;
   onClickActivity?: (activity: ClickActivity) => Promise<void>;
   onClickDiscovery?: (fromUrl: string, discoveredUrl: string, label?: string) => Promise<void>;
   clickBudget?: { remaining: number };
@@ -168,6 +171,7 @@ export async function exploreWebsiteWithBrowser(input: {
     const normalized = normalizeUrl(url);
     if (!normalized || !isCrawlableUrl(normalized)) return;
     if (isExcludedScanUrl(normalized, excluded)) return;
+    if (input.authenticatedCrawl && isPublicRouteUrl(normalized, input.websiteUrl)) return;
     if (seen.has(normalized)) return;
     queue.push({ url: normalized, depth });
   };
@@ -183,6 +187,7 @@ export async function exploreWebsiteWithBrowser(input: {
     if (!current || current.depth > MAX_CRAWL_DEPTH) continue;
     if (seen.has(current.url)) continue;
     if (isExcludedScanUrl(current.url, excluded)) continue;
+    if (input.authenticatedCrawl && isPublicRouteUrl(current.url, input.websiteUrl)) continue;
     seen.add(current.url);
 
     let httpStatus: number | null = null;
@@ -212,6 +217,7 @@ export async function exploreWebsiteWithBrowser(input: {
       };
       pages.push(discovered);
       await input.onPage?.(discovered, snapshot);
+      await input.onExploreProgress?.(pages.length);
 
       if (httpStatus && httpStatus < 400) {
         const links = await extractDomLinks(input.page, current.url, input.hostname);
@@ -222,9 +228,11 @@ export async function exploreWebsiteWithBrowser(input: {
         const clickDiscovered = await discoverUrlsViaButtonClicks({
           page: input.page,
           baseUrl: current.url,
+          websiteUrl: input.websiteUrl,
           hostname: input.hostname,
           seen,
           budget: clickBudget,
+          authenticatedCrawl: input.authenticatedCrawl,
           onActivity: input.onClickActivity,
         });
         for (const link of clickDiscovered) {
