@@ -5,6 +5,7 @@ import { MAX_SCAN_DURATION_MS } from "../constants";
 import { crawlWebsite } from "../crawler/crawler";
 import { publishScanEvent } from "../events/bus";
 import { runRequirementHandler } from "../handlers";
+import { ensureBatchedAiReviews } from "../handlers/ai-helpers";
 import { loadRequirementDefinitions } from "../registry/load-definitions";
 import { scoreFromResults } from "../score";
 import {
@@ -116,7 +117,9 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
     await setScanStatus(sessionId, "running");
     const browser = await launchScanBrowser(sessionId);
     await browser.page.goto(session.website_url, { waitUntil: "domcontentloaded" });
-    await context.saveScreenshot("homepage", await browser.page.screenshot({ type: "png" }));
+    const homepageScreenshot = await browser.page.screenshot({ type: "png" });
+    await context.saveScreenshot("homepage", homepageScreenshot);
+    context.homepageScreenshotBase64 = `data:image/png;base64,${homepageScreenshot.toString("base64")}`;
 
     if (credentials?.login && credentials.password) {
       await emit("login_started", "Attempting authenticated login");
@@ -134,6 +137,9 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
     }
 
     const enabledDefinitions = await loadRequirementDefinitions({ enabledOnly: true });
+    await ensureBatchedAiReviews(enabledDefinitions, context);
+    await emit("ai_review_completed", "Visual and content AI review batches prepared");
+
     let index = 0;
     for (const definition of enabledDefinitions) {
       if (context.isCancelled()) break;

@@ -1,9 +1,14 @@
 import { inspectDomain } from "../domain-inspect";
+import { analyzeSecurityHeaders } from "../external/security-headers";
+import { fetchPageSpeed } from "../external/pagespeed";
+import { fetchWaybackHistory } from "../external/wayback";
+import { getScanExternal } from "../external/scan-cache";
 import type {
   RequirementDefinition,
   RequirementHandler,
   ScanContext,
 } from "../types";
+import { runDefinitionAiReview } from "./ai-helpers";
 import {
   checkLegalPage,
   fail,
@@ -12,6 +17,10 @@ import {
   pageText,
   pass,
 } from "./shared";
+
+const DOMAIN_MIN_AGE_DAYS = 365;
+const SECURITY_HEADERS_PASS_SCORE = 60;
+const PAGESPEED_PASS_SCORE = 50;
 
 const LEGAL_KEYWORDS: Record<string, string[]> = {
   terms_conditions_page: ["terms", "conditions", "terms-and-conditions"],
@@ -49,17 +58,102 @@ export const HANDLER_REGISTRY: Record<string, RequirementHandler> = {
   sslChecker: async (definition, context) => {
     try {
       const response = await fetch(context.websiteUrl, { redirect: "manual" });
-      const secure = context.websiteUrl.startsWith("https://") || response.status === 301 || response.status === 302;
+      const secure =
+        context.websiteUrl.startsWith("https://") ||
+        response.status === 301 ||
+        response.status === 302;
       if (!secure) {
         return fail(definition, "Website is not served over HTTPS.");
       }
-      return pass(definition, "HTTPS is enabled for the website.", {
+
+      const headers = await getScanExternal(context, "security-headers", () =>
+        analyzeSecurityHeaders(context.websiteUrl),
+      );
+      const headerSummary = headers.error
+        ? "Security headers could not be analyzed."
+        : `Security headers score: ${headers.score}/100. Present: ${headers.present.join(", ") || "none"}. Missing: ${headers.missing.join(", ") || "none"}.`;
+
+      if (headers.error) {
+        return pass(definition, `HTTPS is enabled. ${headerSummary}`, {
+          checkedUrl: context.websiteUrl,
+          evidence: {
+            url: context.websiteUrl,
+            httpStatus: response.status,
+            externalData: { securityHeaders: headers },
+          },
+        });
+      }
+
+      if (headers.score < SECURITY_HEADERS_PASS_SCORE) {
+        return manual(
+          definition,
+          `HTTPS is enabled but security headers are weak (${headers.score}/100). ${headerSummary}`,
+          {
+            checkedUrl: context.websiteUrl,
+            evidence: {
+              url: context.websiteUrl,
+              httpStatus: response.status,
+              headers: headers.headers,
+              calculatedValue: `${headers.score}/100`,
+              externalData: { securityHeaders: headers },
+            },
+          },
+        );
+      }
+
+      return pass(definition, `HTTPS is enabled and security headers look adequate. ${headerSummary}`, {
         checkedUrl: context.websiteUrl,
-        evidence: { url: context.websiteUrl, httpStatus: response.status },
+        evidence: {
+          url: context.websiteUrl,
+          httpStatus: response.status,
+          headers: headers.headers,
+          calculatedValue: `${headers.score}/100`,
+          externalData: { securityHeaders: headers },
+        },
       });
     } catch (error) {
-      return manual(definition, `Could not verify SSL automatically: ${error instanceof Error ? error.message : "unknown error"}`);
+      return manual(
+        definition,
+        `Could not verify SSL automatically: ${error instanceof Error ? error.message : "unknown error"}`,
+      );
     }
+  },
+
+  securityHeadersChecker: async (definition, context) => {
+    const headers = await getScanExternal(context, "security-headers", () =>
+      analyzeSecurityHeaders(context.websiteUrl),
+    );
+    if (headers.error) {
+      return manual(definition, `Security headers check failed: ${headers.error}`);
+    }
+    if (headers.score >= SECURITY_HEADERS_PASS_SCORE) {
+      return pass(
+        definition,
+        `Security headers score ${headers.score}/100. Present: ${headers.present.join(", ")}.`,
+        {
+          checkedUrl: context.websiteUrl,
+          evidence: {
+            url: context.websiteUrl,
+            headers: headers.headers,
+            calculatedValue: `${headers.score}/100`,
+            externalData: { securityHeaders: headers },
+          },
+        },
+      );
+    }
+    return manual(
+      definition,
+      `Security headers score ${headers.score}/100. Missing: ${headers.missing.join(", ")}.`,
+      {
+        checkedUrl: context.websiteUrl,
+        evidence: {
+          url: context.websiteUrl,
+          headers: headers.headers,
+          calculatedValue: `${headers.score}/100`,
+          externalData: { securityHeaders: headers },
+        },
+      },
+    );
   },
 
   faviconChecker: async (definition, context) => {
@@ -115,12 +209,69 @@ export const HANDLER_REGISTRY: Record<string, RequirementHandler> = {
   },
 
   mobileResponsiveChecker: async (definition, context) => {
-    const homepage = context.pages.find((p) => p.pageType === "homepage")?.url || context.websiteUrl;
-    const html = await fetch(homepage).then((r) => r.text()).catch(() => "");
+    const homepage =
+      context.pages.find((p) => p.pageType === "homepage")?.url || context.websiteUrl;
+
+    const pageSpeed = await getScanExternal(context, "pagespeed-mobile", () =>
+      fetchPageSpeed(homepage),
+    );
+
+    if (!pageSpeed.error && pageSpeed.performanceScore != null) {
+      const metrics = {
+        performanceScore: pageSpeed.performanceScore,
+        lcpMs: pageSpeed.lcpMs,
+        cls: pageSpeed.cls,
+        mobileFriendly: pageSpeed.mobileFriendly,
+      };
+      const mobileOk = pageSpeed.mobileFriendly !== false;
+      const performanceOk = pageSpeed.performanceScore >= PAGESPEED_PASS_SCORE;
+
+      if (mobileOk && performanceOk) {
+        return pass(
+          definition,
+          `Google PageSpeed mobile score ${pageSpeed.performanceScore}/100; site appears mobile-friendly.`,
+          {
+            checkedUrl: homepage,
+            evidence: {
+              url: homepage,
+              calculatedValue: `${pageSpeed.performanceScore}/100`,
+              externalData: { pageSpeed: metrics },
+              metrics,
+            },
+          },
+        );
+      }
+
+      return fail(
+        definition,
+        `PageSpeed mobile score ${pageSpeed.performanceScore}/100${pageSpeed.mobileFriendly === false ? "; mobile usability issues detected" : ""}.`,
+        {
+          checkedUrl: homepage,
+          evidence: {
+            url: homepage,
+            calculatedValue: `${pageSpeed.performanceScore}/100`,
+            externalData: { pageSpeed: metrics },
+            metrics,
+          },
+        },
+      );
+    }
+
+    const html = await fetch(homepage)
+      .then((r) => r.text())
+      .catch(() => "");
     const hasViewport = /name=["']viewport["']/i.test(html);
+    const fallbackNote = pageSpeed.error
+      ? ` PageSpeed unavailable (${pageSpeed.error}); used viewport meta fallback.`
+      : " PageSpeed returned no score; used viewport meta fallback.";
+
     return hasViewport
-      ? pass(definition, "Viewport meta tag found; responsive layout likely enabled.", { checkedUrl: homepage })
-      : fail(definition, "No viewport meta tag found on homepage.");
+      ? pass(definition, `Viewport meta tag found; responsive layout likely enabled.${fallbackNote}`, {
+          checkedUrl: homepage,
+        })
+      : fail(definition, `No viewport meta tag found on homepage.${fallbackNote}`, {
+          checkedUrl: homepage,
+        });
   },
 
   logoChecker: async (definition, context) => {
@@ -223,13 +374,61 @@ export const HANDLER_REGISTRY: Record<string, RequirementHandler> = {
   },
 
   domainAgeChecker: async (definition, context) => {
-    const domain = await inspectDomain(`https://${context.hostname}`);
-    if (!domain.createdDate) {
-      return manual(definition, "Domain creation date unavailable from RDAP.");
+    const [domain, wayback] = await Promise.all([
+      inspectDomain(`https://${context.hostname}`),
+      getScanExternal(context, "wayback-history", () => fetchWaybackHistory(context.hostname)),
+    ]);
+
+    const rdapAgeDays = domain.createdDate
+      ? Math.floor(
+          (Date.now() - Date.parse(`${domain.createdDate}T00:00:00Z`)) / 86_400_000,
+        )
+      : null;
+
+    const ageDays = wayback.ageDays ?? rdapAgeDays;
+    const firstSeen = wayback.firstSnapshotDate || domain.createdDate;
+    const sources = [
+      wayback.firstSnapshotDate ? `Wayback first snapshot: ${wayback.firstSnapshotDate}` : null,
+      domain.createdDate ? `RDAP creation: ${domain.createdDate}` : null,
+    ]
+      .filter(Boolean)
+      .join("; ");
+
+    if (ageDays == null) {
+      return manual(
+        definition,
+        `Domain age could not be determined from Wayback Machine or RDAP.${wayback.error ? ` Wayback error: ${wayback.error}` : ""}`,
+        {
+          evidence: {
+            externalData: { wayback, rdap: domain },
+          },
+        },
+      );
     }
-    return pass(definition, `Domain creation date: ${domain.createdDate}.`, {
-      evidence: { calculatedValue: domain.createdDate, externalData: domain as unknown as Record<string, unknown> },
-    });
+
+    if (ageDays < DOMAIN_MIN_AGE_DAYS) {
+      return manual(
+        definition,
+        `Domain appears young (${ageDays} days; first seen ${firstSeen}). Business justification may be required. ${sources}`,
+        {
+          evidence: {
+            calculatedValue: `${ageDays} days`,
+            externalData: { wayback, rdap: domain, ageDays },
+          },
+        },
+      );
+    }
+
+    return pass(
+      definition,
+      `Domain age is ${ageDays} days (first seen ${firstSeen}). ${sources}`,
+      {
+        evidence: {
+          calculatedValue: `${ageDays} days`,
+          externalData: { wayback, rdap: domain, ageDays },
+        },
+      },
+    );
   },
 
   cloudflareChecker: async (definition, context) => {
@@ -274,17 +473,13 @@ export const HANDLER_REGISTRY: Record<string, RequirementHandler> = {
   geolocationTrafficChecker: (definition) =>
     manual(definition, "Geolocation traffic check requires external provider configuration."),
 
-  aiReviewChecker: (definition) =>
-    manual(definition, "Qualitative AI review requires configured AI provider and representative screenshots."),
+  aiReviewChecker: (definition, context) => runDefinitionAiReview(definition, context),
 
-  homepageHeroChecker: (definition) =>
-    manual(definition, "Homepage hero image check requires visual review or configured AI review."),
+  homepageHeroChecker: (definition, context) => runDefinitionAiReview(definition, context),
 
-  contentQualityChecker: (definition) =>
-    manual(definition, "Content uniqueness/grammar review requires AI or human editorial review."),
+  contentQualityChecker: (definition, context) => runDefinitionAiReview(definition, context),
 
-  websiteSimilarityChecker: (definition) =>
-    manual(definition, "Template similarity review requires comparison set and AI/visual analysis."),
+  websiteSimilarityChecker: (definition, context) => runDefinitionAiReview(definition, context),
 
   accountRegistrationChecker: (definition, context) =>
     context.credentials?.login

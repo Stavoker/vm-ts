@@ -156,6 +156,8 @@ export type ScanContext = {
   credentials?: ScanCredentials;
   pages: DiscoveredPage[];
   results: Map<string, RequirementCheckResult>;
+  externalCache?: Map<string, unknown>;
+  homepageScreenshotBase64?: string | null;
   emit: (type: string, message: string, payload?: Record<string, unknown>) => Promise<void>;
   setCurrent: (page: string | null, action: string | null) => Promise<void>;
   saveScreenshot: (label: string, buffer: Buffer) => Promise<string | null>;
