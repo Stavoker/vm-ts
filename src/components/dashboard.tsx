@@ -5,6 +5,7 @@ import { AddSiteForm } from "@/components/add-site-form";
 import { Sidebar, type NavView } from "@/components/sidebar";
 import { SitesTable } from "@/components/sites-table";
 import { PaymentsPanel } from "@/components/payments-panel";
+import { RequirementsCheckPanel } from "@/components/requirements-check-panel";
 import { TelegramPanel } from "@/components/telegram-panel";
 import { CHECK_INTERVAL_MS } from "@/lib/constants";
 import type { Site, SiteStatus } from "@/lib/types";
@@ -127,7 +128,7 @@ export function Dashboard() {
   }, [sites]);
 
   const visibleSites = useMemo(() => {
-    if (view === "sites" || view === "add" || view === "telegram" || view === "payments") {
+    if (view === "sites" || view === "add" || view === "telegram" || view === "payments" || view === "requirements") {
       return sites;
     }
     return sites.filter((site) => site.status === view);
@@ -140,7 +141,9 @@ export function Dashboard() {
         ? "Telegram"
         : view === "payments"
           ? "Оплаты Notion"
-          : view === "sites"
+          : view === "requirements"
+            ? "Requirements Check"
+            : view === "sites"
             ? "Все сайты"
             : STATUS_LABELS[view];
 
@@ -185,7 +188,7 @@ export function Dashboard() {
                   ? `Последняя: ${lastCheckLabel} · следующая через ${countdown}`
                   : `Следующая проверка через ${countdown}`}
             </span>
-            {view !== "add" && view !== "telegram" && view !== "payments" ? (
+            {view !== "add" && view !== "telegram" && view !== "payments" && view !== "requirements" ? (
               <button
                 type="button"
                 onClick={() => void checkAll("manual")}
@@ -212,6 +215,8 @@ export function Dashboard() {
             <TelegramPanel />
           ) : view === "payments" ? (
             <PaymentsPanel />
+          ) : view === "requirements" ? (
+            <RequirementsCheckPanel />
           ) : loading ? (
             <p className="text-sm text-gray-500">Загрузка…</p>
           ) : (
@@ -222,6 +227,7 @@ export function Dashboard() {
           view !== "add" &&
           view !== "telegram" &&
           view !== "payments" &&
+          view !== "requirements" &&
           isStatusView(view) ? (
             <p className="mt-3 text-xs text-gray-500">
               Показано {visibleSites.length} из {sites.length}
