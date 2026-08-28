@@ -6,7 +6,7 @@ import {
 } from "@/lib/requirements-check/coverage";
 import { scoreFromResults } from "@/lib/requirements-check/score";
 import { validatePublicWebsiteUrl } from "@/lib/requirements-check/ssrf";
-import { dedupeUrls, isCrawlableUrl, normalizeUrl } from "@/lib/requirements-check/url-utils";
+import { dedupeUrls, isCrawlableUrl, normalizeUrl, buildLandingUrlSet, isExcludedScanUrl } from "@/lib/requirements-check/url-utils";
 import { REQUIREMENT_DEFINITIONS } from "@/lib/requirements-check/registry/definitions";
 import { mapDefinitionRow } from "@/lib/requirements-check/registry/load-definitions";
 
@@ -97,6 +97,17 @@ describe("url utils", () => {
   it("skips static asset urls during crawl", () => {
     expect(isCrawlableUrl("https://example.com/_next/static/chunks/app.js")).toBe(false);
     expect(isCrawlableUrl("https://example.com/login")).toBe(true);
+  });
+
+  it("builds landing url exclusions for authenticated platform crawl", () => {
+    const excluded = buildLandingUrlSet("https://example.com/", [
+      { url: "https://example.com/", pageType: "homepage" },
+      { url: "https://example.com/dashboard", pageType: "account" },
+      { url: "https://example.com/pricing", pageType: "unknown" },
+    ]);
+    expect(isExcludedScanUrl("https://example.com/", excluded)).toBe(true);
+    expect(isExcludedScanUrl("https://example.com/dashboard", excluded)).toBe(false);
+    expect(isExcludedScanUrl("https://example.com/pricing", excluded)).toBe(false);
   });
 });
 

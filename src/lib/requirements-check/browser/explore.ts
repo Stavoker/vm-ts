@@ -11,6 +11,7 @@ import {
   classifyPageType,
   dedupeUrls,
   isCrawlableUrl,
+  isExcludedScanUrl,
   isLogoutLink,
   isSameSite,
   normalizeUrl,
@@ -112,6 +113,7 @@ export async function exploreWebsiteWithBrowser(input: {
   websiteUrl: string;
   hostname: string;
   seedUrls?: string[];
+  excludeUrls?: Set<string>;
   onPage?: (page: DiscoveredPage, snapshot: PageSnapshot) => Promise<void>;
   onClickDiscovery?: (fromUrl: string, discoveredUrl: string, label?: string) => Promise<void>;
   clickBudget?: { remaining: number };
@@ -119,23 +121,32 @@ export async function exploreWebsiteWithBrowser(input: {
   const startUrl = normalizeUrl(input.websiteUrl);
   if (!startUrl) return { pages: [], snapshots: new Map() };
 
-  const queue: Array<{ url: string; depth: number }> = [{ url: startUrl, depth: 0 }];
+  const excluded = input.excludeUrls ?? new Set<string>();
+  const queue: Array<{ url: string; depth: number }> = [];
   const seen = new Set<string>();
   const snapshots = new Map<string, PageSnapshot>();
   const pages: DiscoveredPage[] = [];
   const clickBudget = input.clickBudget ?? createClickBudget();
 
+  const enqueue = (url: string, depth: number) => {
+    const normalized = normalizeUrl(url);
+    if (!normalized || !isCrawlableUrl(normalized)) return;
+    if (isExcludedScanUrl(normalized, excluded)) return;
+    if (seen.has(normalized)) return;
+    queue.push({ url: normalized, depth });
+  };
+
+  enqueue(startUrl, 0);
+
   for (const seed of input.seedUrls || []) {
-    const normalized = normalizeUrl(seed);
-    if (normalized && isCrawlableUrl(normalized) && !seen.has(normalized)) {
-      queue.push({ url: normalized, depth: 1 });
-    }
+    enqueue(seed, 1);
   }
 
   while (queue.length > 0 && pages.length < MAX_DISCOVERED_PAGES) {
     const current = queue.shift();
     if (!current || current.depth > MAX_CRAWL_DEPTH) continue;
     if (seen.has(current.url)) continue;
+    if (isExcludedScanUrl(current.url, excluded)) continue;
     seen.add(current.url);
 
     let httpStatus: number | null = null;
@@ -168,9 +179,7 @@ export async function exploreWebsiteWithBrowser(input: {
       if (httpStatus && httpStatus < 400) {
         const links = await extractDomLinks(input.page, current.url, input.hostname);
         for (const link of links) {
-          if (!seen.has(link)) {
-            queue.push({ url: link, depth: current.depth + 1 });
-          }
+          enqueue(link, current.depth + 1);
         }
 
         const clickDiscovered = await discoverUrlsViaButtonClicks({
@@ -181,8 +190,8 @@ export async function exploreWebsiteWithBrowser(input: {
           budget: clickBudget,
         });
         for (const link of clickDiscovered) {
-          if (!seen.has(link)) {
-            queue.push({ url: link, depth: current.depth + 1 });
+          if (!isExcludedScanUrl(link, excluded)) {
+            enqueue(link, current.depth + 1);
             await input.onClickDiscovery?.(current.url, link);
           }
         }

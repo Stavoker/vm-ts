@@ -105,7 +105,6 @@ export function RequirementsCheckPanel() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Не удалось запустить проверку");
-      setPassword("");
       setActiveId(String(data.session.id));
       await loadSessions();
     } catch (err) {

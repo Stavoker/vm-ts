@@ -1,7 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { closeScanBrowser, detectCaptcha, launchScanBrowser, tryLogin } from "../browser/playwright";
-import { exploreWebsiteWithBrowser, mergeExplorationResults, scrollPageFully } from "../browser/explore";
+import {
+  capturePageSnapshot,
+  exploreWebsiteWithBrowser,
+  scrollPageFully,
+} from "../browser/explore";
 import { createClickBudget } from "../browser/click-navigator";
 import { MAX_SCAN_DURATION_MS } from "../constants";
 import { crawlWebsite } from "../crawler/crawler";
@@ -21,11 +25,13 @@ import {
   updateScanSession,
 } from "../sessions";
 import type {
+  DiscoveredPage,
   RequirementCheckResult,
   RequirementResultRow,
   ScanContext,
   ScanCredentials,
 } from "../types";
+import { buildLandingUrlSet, normalizeUrl } from "../url-utils";
 
 const cancelled = new Set<string>();
 const paused = new Set<string>();
@@ -118,11 +124,32 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
 
     await setScanStatus(sessionId, "running");
     const browser = await launchScanBrowser(sessionId);
-    await browser.page.goto(session.website_url, { waitUntil: "domcontentloaded" });
+    const landingUrl = normalizeUrl(session.website_url) || session.website_url;
+
+    await browser.page.goto(landingUrl, { waitUntil: "domcontentloaded" });
+    await emit("landing_exploration_started", "Scrolling landing page before login");
+    await context.setCurrent(landingUrl, "Scrolling landing page");
+    await scrollPageFully(browser.page);
+    const landingSnapshot = await capturePageSnapshot(browser.page, landingUrl);
+    const landingScreenshot = await browser.page.screenshot({ type: "png", fullPage: true });
+    await context.saveScreenshot("homepage", landingScreenshot);
+    context.homepageScreenshotBase64 = `data:image/png;base64,${landingScreenshot.toString("base64")}`;
+
+    const landingPage: DiscoveredPage = {
+      url: landingUrl,
+      pageType: "homepage",
+      httpStatus: 200,
+      title: landingSnapshot.title,
+      checked: true,
+    };
+    await emit("landing_exploration_completed", `Landing page explored (${landingSnapshot.scrollHeight}px)`, {
+      url: landingUrl,
+    });
 
     let loginOk = false;
     if (credentials?.login && credentials.password) {
-      await emit("login_started", "Attempting authenticated login before deep exploration");
+      await emit("login_started", "Logging into platform after landing page review");
+      await context.setCurrent(null, "Logging in");
       const login = await tryLogin(browser.page, session.website_url, credentials);
       if (login.message.includes("CAPTCHA")) {
         await setScanStatus(sessionId, "paused_for_user");
@@ -137,57 +164,71 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
       }
     }
 
-    await emit("browser_exploration_started", "Exploring pages with scroll, menus, and button navigation");
-
-    const seedUrls = pages.map((page) => page.url);
-    let explored = await exploreWebsiteWithBrowser({
-      page: browser.page,
-      websiteUrl: loginOk ? browser.page.url() : session.website_url,
-      hostname: session.hostname,
-      seedUrls,
-      onPage: async (page, snapshot) => {
-        await emit("page_explored", `Explored ${page.url} (${snapshot.scrollHeight}px)`, {
-          url: page.url,
-          pageType: page.pageType,
-          placeholders: snapshot.placeholders,
-        });
-      },
-      onClickDiscovery: async (fromUrl, discoveredUrl) => {
-        await emit("navigation_discovered", `Navigation ${fromUrl} -> ${discoveredUrl}`, {
-          fromUrl,
-          discoveredUrl,
-        });
-      },
-    });
+    const landingUrls = buildLandingUrlSet(session.website_url, pages);
+    const platformSeedUrls = pages
+      .map((page) => page.url)
+      .filter((url) => !landingUrls.has(normalizeUrl(url) || url));
 
     if (loginOk) {
-      await emit("authenticated_exploration_started", "Exploring authenticated menus (avatar, billing, top-up)");
-      const authExplored = await exploreWebsiteWithBrowser({
+      await emit(
+        "platform_exploration_started",
+        "Exploring authenticated platform pages without returning to landing",
+      );
+      const explored = await exploreWebsiteWithBrowser({
         page: browser.page,
         websiteUrl: browser.page.url(),
         hostname: session.hostname,
-        seedUrls: explored.pages.map((page) => page.url),
+        seedUrls: platformSeedUrls,
+        excludeUrls: landingUrls,
         clickBudget: createClickBudget(80),
         onPage: async (page, snapshot) => {
-          await emit("page_explored", `Explored authenticated ${page.url}`, {
+          await emit("page_explored", `Explored platform ${page.url}`, {
             url: page.url,
             pageType: page.pageType,
             placeholders: snapshot.placeholders,
           });
         },
         onClickDiscovery: async (fromUrl, discoveredUrl) => {
-          await emit("navigation_discovered", `Authenticated navigation ${fromUrl} -> ${discoveredUrl}`, {
+          await emit("navigation_discovered", `Platform navigation ${fromUrl} -> ${discoveredUrl}`, {
             fromUrl,
             discoveredUrl,
           });
         },
       });
-      explored = mergeExplorationResults(explored, authExplored);
-    }
 
-    pages = explored.pages;
-    context.pages = pages;
-    context.pageSnapshots = explored.snapshots;
+      explored.snapshots.set(landingUrl, landingSnapshot);
+      pages = [landingPage, ...explored.pages.filter((page) => page.url !== landingUrl)];
+      context.pages = pages;
+      context.pageSnapshots = explored.snapshots;
+    } else {
+      await emit("browser_exploration_started", "Exploring public pages with scroll and navigation");
+      const explored = await exploreWebsiteWithBrowser({
+        page: browser.page,
+        websiteUrl: landingUrl,
+        hostname: session.hostname,
+        seedUrls: pages.map((page) => page.url),
+        onPage: async (page, snapshot) => {
+          await emit("page_explored", `Explored ${page.url} (${snapshot.scrollHeight}px)`, {
+            url: page.url,
+            pageType: page.pageType,
+            placeholders: snapshot.placeholders,
+          });
+        },
+        onClickDiscovery: async (fromUrl, discoveredUrl) => {
+          await emit("navigation_discovered", `Navigation ${fromUrl} -> ${discoveredUrl}`, {
+            fromUrl,
+            discoveredUrl,
+          });
+        },
+      });
+
+      explored.snapshots.set(landingUrl, landingSnapshot);
+      const byUrl = new Map(explored.pages.map((page) => [page.url, page]));
+      byUrl.set(landingUrl, landingPage);
+      pages = [...byUrl.values()];
+      context.pages = pages;
+      context.pageSnapshots = explored.snapshots;
+    }
 
     await saveDiscoveredPages(
       sessionId,
@@ -204,15 +245,7 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
       checked_pages: pages.length,
       progress_percent: 18,
     });
-    await emit("browser_exploration_completed", `Browser explored ${pages.length} pages with full scroll`);
-
-    const homepageUrl =
-      pages.find((page) => page.pageType === "homepage")?.url || session.website_url;
-    await browser.page.goto(homepageUrl, { waitUntil: "domcontentloaded" });
-    await scrollPageFully(browser.page);
-    const homepageScreenshot = await browser.page.screenshot({ type: "png", fullPage: true });
-    await context.saveScreenshot("homepage", homepageScreenshot);
-    context.homepageScreenshotBase64 = `data:image/png;base64,${homepageScreenshot.toString("base64")}`;
+    await emit("browser_exploration_completed", `Browser explored ${pages.length} pages`);
 
     const enabledDefinitions = await loadRequirementDefinitions({ enabledOnly: true });
     await ensureBatchedAiReviews(enabledDefinitions, context);

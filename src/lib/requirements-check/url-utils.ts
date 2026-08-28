@@ -58,6 +58,39 @@ export function isCrawlableUrl(url: string): boolean {
   }
 }
 
+export function buildLandingUrlSet(
+  websiteUrl: string,
+  pages: Array<{ url: string; pageType?: string }> = [],
+): Set<string> {
+  const excluded = new Set<string>();
+  const root = normalizeUrl(websiteUrl);
+  if (root) excluded.add(root);
+
+  for (const page of pages) {
+    const normalized = normalizeUrl(page.url);
+    if (!normalized) continue;
+    if (page.pageType === "homepage") {
+      excluded.add(normalized);
+      continue;
+    }
+    try {
+      const parsed = new URL(normalized);
+      if (parsed.pathname === "/" || parsed.pathname === "") {
+        excluded.add(normalized);
+      }
+    } catch {
+      // ignore invalid URLs
+    }
+  }
+
+  return excluded;
+}
+
+export function isExcludedScanUrl(url: string, excluded: Set<string>): boolean {
+  const normalized = normalizeUrl(url);
+  return Boolean(normalized && excluded.has(normalized));
+}
+
 export function classifyPageType(url: string, title: string, text: string): import("./types").PageType {
   const hay = `${url} ${title} ${text}`.toLowerCase();
   if (/(privacy|terms|refund|delivery|cancellation|cookie|legal)/.test(hay)) return "legal";
