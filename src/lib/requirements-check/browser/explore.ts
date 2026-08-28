@@ -17,6 +17,19 @@ import {
 } from "../url-utils";
 import { createClickBudget, discoverUrlsViaButtonClicks } from "./click-navigator";
 
+export function mergeExplorationResults(
+  base: { pages: DiscoveredPage[]; snapshots: Map<string, PageSnapshot> },
+  extra: { pages: DiscoveredPage[]; snapshots: Map<string, PageSnapshot> },
+): { pages: DiscoveredPage[]; snapshots: Map<string, PageSnapshot> } {
+  const snapshots = new Map(base.snapshots);
+  for (const [url, snapshot] of extra.snapshots) snapshots.set(url, snapshot);
+
+  const byUrl = new Map(base.pages.map((page) => [page.url, page]));
+  for (const page of extra.pages) byUrl.set(page.url, page);
+
+  return { pages: [...byUrl.values()], snapshots };
+}
+
 export async function scrollPageFully(page: Page): Promise<number> {
   let previousHeight = -1;
   let stablePasses = 0;
@@ -101,6 +114,7 @@ export async function exploreWebsiteWithBrowser(input: {
   seedUrls?: string[];
   onPage?: (page: DiscoveredPage, snapshot: PageSnapshot) => Promise<void>;
   onClickDiscovery?: (fromUrl: string, discoveredUrl: string, label?: string) => Promise<void>;
+  clickBudget?: { remaining: number };
 }): Promise<{ pages: DiscoveredPage[]; snapshots: Map<string, PageSnapshot> }> {
   const startUrl = normalizeUrl(input.websiteUrl);
   if (!startUrl) return { pages: [], snapshots: new Map() };
@@ -109,7 +123,7 @@ export async function exploreWebsiteWithBrowser(input: {
   const seen = new Set<string>();
   const snapshots = new Map<string, PageSnapshot>();
   const pages: DiscoveredPage[] = [];
-  const clickBudget = createClickBudget();
+  const clickBudget = input.clickBudget ?? createClickBudget();
 
   for (const seed of input.seedUrls || []) {
     const normalized = normalizeUrl(seed);

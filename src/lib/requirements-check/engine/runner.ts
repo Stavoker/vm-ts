@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { closeScanBrowser, detectCaptcha, launchScanBrowser, tryLogin } from "../browser/playwright";
-import { exploreWebsiteWithBrowser, scrollPageFully } from "../browser/explore";
+import { exploreWebsiteWithBrowser, mergeExplorationResults, scrollPageFully } from "../browser/explore";
+import { createClickBudget } from "../browser/click-navigator";
 import { MAX_SCAN_DURATION_MS } from "../constants";
 import { crawlWebsite } from "../crawler/crawler";
 import { publishScanEvent } from "../events/bus";
@@ -117,12 +118,31 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
 
     await setScanStatus(sessionId, "running");
     const browser = await launchScanBrowser(sessionId);
-    await emit("browser_exploration_started", "Exploring pages with browser scroll and link discovery");
+    await browser.page.goto(session.website_url, { waitUntil: "domcontentloaded" });
+
+    let loginOk = false;
+    if (credentials?.login && credentials.password) {
+      await emit("login_started", "Attempting authenticated login before deep exploration");
+      const login = await tryLogin(browser.page, session.website_url, credentials);
+      if (login.message.includes("CAPTCHA")) {
+        await setScanStatus(sessionId, "paused_for_user");
+        await updateScanSession(sessionId, {
+          pause_reason: "CAPTCHA detected. Please complete the CAPTCHA in the live browser view.",
+        });
+        await emit("scan_paused", "CAPTCHA detected");
+        await context.waitIfPaused();
+      } else {
+        loginOk = login.ok;
+        await emit(login.ok ? "login_successful" : "login_failed", login.message);
+      }
+    }
+
+    await emit("browser_exploration_started", "Exploring pages with scroll, menus, and button navigation");
 
     const seedUrls = pages.map((page) => page.url);
-    const explored = await exploreWebsiteWithBrowser({
+    let explored = await exploreWebsiteWithBrowser({
       page: browser.page,
-      websiteUrl: session.website_url,
+      websiteUrl: loginOk ? browser.page.url() : session.website_url,
       hostname: session.hostname,
       seedUrls,
       onPage: async (page, snapshot) => {
@@ -133,12 +153,37 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
         });
       },
       onClickDiscovery: async (fromUrl, discoveredUrl) => {
-        await emit("navigation_discovered", `Button navigation ${fromUrl} -> ${discoveredUrl}`, {
+        await emit("navigation_discovered", `Navigation ${fromUrl} -> ${discoveredUrl}`, {
           fromUrl,
           discoveredUrl,
         });
       },
     });
+
+    if (loginOk) {
+      await emit("authenticated_exploration_started", "Exploring authenticated menus (avatar, billing, top-up)");
+      const authExplored = await exploreWebsiteWithBrowser({
+        page: browser.page,
+        websiteUrl: browser.page.url(),
+        hostname: session.hostname,
+        seedUrls: explored.pages.map((page) => page.url),
+        clickBudget: createClickBudget(80),
+        onPage: async (page, snapshot) => {
+          await emit("page_explored", `Explored authenticated ${page.url}`, {
+            url: page.url,
+            pageType: page.pageType,
+            placeholders: snapshot.placeholders,
+          });
+        },
+        onClickDiscovery: async (fromUrl, discoveredUrl) => {
+          await emit("navigation_discovered", `Authenticated navigation ${fromUrl} -> ${discoveredUrl}`, {
+            fromUrl,
+            discoveredUrl,
+          });
+        },
+      });
+      explored = mergeExplorationResults(explored, authExplored);
+    }
 
     pages = explored.pages;
     context.pages = pages;
@@ -168,21 +213,6 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
     const homepageScreenshot = await browser.page.screenshot({ type: "png", fullPage: true });
     await context.saveScreenshot("homepage", homepageScreenshot);
     context.homepageScreenshotBase64 = `data:image/png;base64,${homepageScreenshot.toString("base64")}`;
-
-    if (credentials?.login && credentials.password) {
-      await emit("login_started", "Attempting authenticated login");
-      const login = await tryLogin(browser.page, session.website_url, credentials);
-      if (login.message.includes("CAPTCHA")) {
-        await setScanStatus(sessionId, "paused_for_user");
-        await updateScanSession(sessionId, {
-          pause_reason: "CAPTCHA detected. Please complete the CAPTCHA in the live browser view.",
-        });
-        await emit("scan_paused", "CAPTCHA detected");
-        await context.waitIfPaused();
-      } else {
-        await emit(login.ok ? "login_successful" : "login_failed", login.message);
-      }
-    }
 
     const enabledDefinitions = await loadRequirementDefinitions({ enabledOnly: true });
     await ensureBatchedAiReviews(enabledDefinitions, context);
