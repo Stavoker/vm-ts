@@ -115,6 +115,26 @@ export function RequirementsCheckPanel() {
     }
   }
 
+  async function deleteScan(id: string) {
+    if (!window.confirm("Delete this audit from history? This cannot be undone.")) return;
+    setError(null);
+    try {
+      const response = await fetch(`/api/requirements-check/${id}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to delete audit");
+      if (activeId === id) {
+        setActiveId(null);
+        setActiveSession(null);
+        setResults([]);
+        setEvents([]);
+        setLiveScreenshot(null);
+      }
+      await loadSessions();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    }
+  }
+
   async function cancelScan() {
     if (!activeId) return;
     await fetch(`/api/requirements-check/${activeId}/cancel`, { method: "POST" });
@@ -386,6 +406,13 @@ export function RequirementsCheckPanel() {
                   >
                     PDF
                   </a>
+                  <button
+                    type="button"
+                    className="text-xs text-red-600 hover:underline"
+                    onClick={() => void deleteScan(session.id)}
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
             ))}

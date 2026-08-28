@@ -200,3 +200,17 @@ export async function setScanStatus(id: string, status: ScanStatus, errorMessage
       : {}),
   });
 }
+
+export async function deleteScanSession(id: string): Promise<void> {
+  const { cancelScan } = await import("./engine/runner");
+  const { closeScanBrowser } = await import("./browser/playwright");
+  cancelScan(id);
+  await closeScanBrowser(id).catch(() => undefined);
+
+  const supabase = createServerSupabase();
+  const { error } = await supabase.from("requirement_check_sessions").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+
+  await fs.rm(getScanStorageDir(id), { recursive: true, force: true }).catch(() => undefined);
+  clearScanCredentials(id);
+}

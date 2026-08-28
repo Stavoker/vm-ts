@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  deleteScanSession,
   getScanSession,
   listRequirementResults,
   listScanEvents,
@@ -30,13 +31,11 @@ export async function GET(_request: Request, { params }: Params) {
 export async function DELETE(_request: Request, { params }: Params) {
   try {
     const { id } = await params;
-    const { createServerSupabase } = await import("@/lib/supabase");
-    const supabase = createServerSupabase();
-    const { error } = await supabase
-      .from("requirement_check_sessions")
-      .delete()
-      .eq("id", id);
-    if (error) throw new Error(error.message);
+    const session = await getScanSession(id);
+    if (!session) {
+      return NextResponse.json({ error: "Scan not found" }, { status: 404 });
+    }
+    await deleteScanSession(id);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json(
