@@ -19,7 +19,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ru" className={`${body.variable} h-full`}>
-      <body className="min-h-full antialiased">{children}</body>
+      <body className="h-full overflow-hidden antialiased">{children}</body>
     </html>
   );
 }

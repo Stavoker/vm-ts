@@ -17,7 +17,8 @@
 }
 
 body {
-  min-height: 100vh;
+  height: 100%;
+  overflow: hidden;
   margin: 0;
   color: var(--text);
   background: var(--bg);
