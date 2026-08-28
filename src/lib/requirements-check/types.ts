@@ -52,6 +52,7 @@ export type RequirementDefinition = {
   sourceSection: string;
   originalOrder: number;
   mandatoryLevel: string;
+  config?: Record<string, unknown>;
 };
 
 export type RequirementEvidence = {

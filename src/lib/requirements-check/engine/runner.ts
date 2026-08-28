@@ -5,7 +5,7 @@ import { MAX_SCAN_DURATION_MS } from "../constants";
 import { crawlWebsite } from "../crawler/crawler";
 import { publishScanEvent } from "../events/bus";
 import { runRequirementHandler } from "../handlers";
-import { REQUIREMENT_DEFINITIONS } from "../registry/definitions";
+import { loadRequirementDefinitions } from "../registry/load-definitions";
 import { scoreFromResults } from "../score";
 import {
   appendScanEvent,
@@ -133,7 +133,7 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
       }
     }
 
-    const enabledDefinitions = REQUIREMENT_DEFINITIONS.filter((item) => item.enabled);
+    const enabledDefinitions = await loadRequirementDefinitions({ enabledOnly: true });
     let index = 0;
     for (const definition of enabledDefinitions) {
       if (context.isCancelled()) break;

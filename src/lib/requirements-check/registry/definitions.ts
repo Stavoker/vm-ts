@@ -1,5 +1,7 @@
 import type { RequirementDefinition } from "../types";
 
+/** Seed source extracted from Master_check_list_for_Website_creation_and_company_onboarding. */
+/** Canonical runtime registry: public.requirement_definitions (loaded via load-definitions.ts). */
 export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   {
     "id": "register_the_domain_with_com_through_godaddy_or_bigrock",

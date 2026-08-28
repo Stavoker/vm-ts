@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createServerSupabase } from "@/lib/supabase";
-import { REQUIREMENT_DEFINITIONS } from "./registry/definitions";
+import { loadRequirementDefinitions } from "./registry/load-definitions";
 import type {
   RequirementCheckSession,
   RequirementResultRow,
@@ -43,6 +43,7 @@ export async function createScanSession(input: {
   hostname: string;
   credentials?: ScanCredentials;
 }): Promise<RequirementCheckSession> {
+  const definitions = await loadRequirementDefinitions({ enabledOnly: true });
   const supabase = createServerSupabase();
   const { data, error } = await supabase
     .from("requirement_check_sessions")
@@ -50,7 +51,7 @@ export async function createScanSession(input: {
       website_url: input.websiteUrl,
       hostname: input.hostname,
       status: "pending",
-      total_requirements: REQUIREMENT_DEFINITIONS.filter((item) => item.enabled).length,
+      total_requirements: definitions.length,
       has_credentials: Boolean(input.credentials?.login && input.credentials?.password),
       login_page_url: input.credentials?.loginPageUrl || null,
     })

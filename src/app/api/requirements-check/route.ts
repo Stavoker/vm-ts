@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
-import { buildCoverageReport } from "@/lib/requirements-check/coverage";
+import {
+  buildCoverageReportFromDefinitions,
+  buildSourceCoverageReport,
+  validateRegistryIntegrity,
+} from "@/lib/requirements-check/coverage";
 import { startRequirementsScanJob } from "@/lib/requirements-check/engine/runner";
+import { REQUIREMENT_DEFINITIONS } from "@/lib/requirements-check/registry/definitions";
+import { loadRequirementDefinitions } from "@/lib/requirements-check/registry/load-definitions";
 import { validatePublicWebsiteUrl } from "@/lib/requirements-check/ssrf";
 import {
   createScanSession,
@@ -10,8 +16,37 @@ import {
 export async function GET() {
   try {
     const sessions = await listScanSessions(30);
-    const coverage = buildCoverageReport();
-    return NextResponse.json({ sessions, coverage });
+    let coverage = buildSourceCoverageReport();
+    let registrySource: "database" | "source_file" = "source_file";
+    let definitions = null as Awaited<ReturnType<typeof loadRequirementDefinitions>> | null;
+
+    try {
+      definitions = await loadRequirementDefinitions();
+      coverage = buildCoverageReportFromDefinitions(
+        definitions.map((item) => ({
+          id: item.id,
+          type: item.type,
+          automationHandler: item.automationHandler,
+          enabled: item.enabled,
+        })),
+      );
+      registrySource = "database";
+    } catch {
+      // DB registry not migrated yet — fall back to source extraction counts.
+    }
+
+    const integrity = validateRegistryIntegrity(
+      (definitions || REQUIREMENT_DEFINITIONS).map((item) => ({
+        id: item.id,
+        type: item.type,
+        automationHandler: item.automationHandler,
+        manualInstructions: item.manualInstructions,
+        enabled: item.enabled,
+        order: item.order,
+      })),
+    );
+
+    return NextResponse.json({ sessions, coverage, registrySource, integrity });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to load scans" },
