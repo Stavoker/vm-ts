@@ -18,6 +18,17 @@ const ROW_TEXT_WIDTH = CONTENT_WIDTH - BADGE_WIDTH - 8;
 
 type PDFDoc = InstanceType<typeof PDFDocument>;
 
+type PDFDocInternal = PDFDoc & {
+  _wrapper?: unknown;
+  _textOptions?: unknown;
+};
+
+function resetPdfTextState(doc: PDFDoc) {
+  const internal = doc as PDFDocInternal;
+  internal._wrapper = null;
+  internal._textOptions = null;
+}
+
 function ensureSpace(doc: PDFDoc, height: number) {
   const bottom = doc.page.height - MARGIN;
   if (doc.y + height > bottom) {
@@ -29,8 +40,7 @@ function ensureSpace(doc: PDFDoc, height: number) {
 
 function drawFooter(doc: PDFDoc, pageIndex: number, pageCount: number) {
   doc.switchToPage(pageIndex);
-  doc._wrapper = null;
-  doc._textOptions = null;
+  resetPdfTextState(doc);
   const label = `Page ${pageIndex + 1} of ${pageCount}`;
   doc.fillColor("#9ca3af").font("Helvetica").fontSize(7);
   const labelWidth = doc.widthOfString(label);

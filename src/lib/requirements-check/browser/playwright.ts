@@ -1,7 +1,7 @@
 import type { Browser, BrowserContext, Page } from "playwright";
 import { publishScreenshot } from "../events/bus";
 import { NAVIGATION_TIMEOUT_MS } from "../constants";
-import { configurePlaywrightBrowsersPathForRuntime } from "./playwright-path";
+import { configurePlaywrightBrowsersPathForRuntime } from "./playwright-path-runtime";
 
 configurePlaywrightBrowsersPathForRuntime();
 

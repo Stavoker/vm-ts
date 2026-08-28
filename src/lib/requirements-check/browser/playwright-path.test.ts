@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { configurePlaywrightBrowsersPathForRuntime } from "./playwright-path-runtime";
 import {
-  configurePlaywrightBrowsersPathForRuntime,
   resolvePlaywrightBrowsersPathForInstall,
   sanitizePlaywrightBrowsersPath,
 } from "./playwright-path";
@@ -22,10 +22,15 @@ describe("playwright path", () => {
     else process.env.PLAYWRIGHT_BROWSERS_PATH = previous;
   });
 
-  it("clears invalid runtime path and uses default cache", () => {
+  it("clears invalid runtime env prefix and relative paths", () => {
     process.env.PLAYWRIGHT_BROWSERS_PATH = "PLAYWRIGHT_BROWSERS_PATH=/tmp/does-not-exist-playwright";
     configurePlaywrightBrowsersPathForRuntime();
+    expect(process.env.PLAYWRIGHT_BROWSERS_PATH).toBe("/tmp/does-not-exist-playwright");
+
+    process.env.PLAYWRIGHT_BROWSERS_PATH = ".playwright-browsers";
+    configurePlaywrightBrowsersPathForRuntime();
     expect(process.env.PLAYWRIGHT_BROWSERS_PATH).toBeUndefined();
+
     delete process.env.PLAYWRIGHT_BROWSERS_PATH;
   });
 });
