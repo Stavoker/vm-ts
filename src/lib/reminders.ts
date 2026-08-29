@@ -148,9 +148,8 @@ async function upsertFromNotion(items: NotionPaymentItem[]) {
       target: item.target,
       pay_for: item.payFor,
       due_date: item.dueDate,
-      ...(dateChanged
-        ? { status: "pending" as const, last_notified_at: null, payed_at: null }
-        : {}),
+      status: dateChanged ? ("pending" as const) : (prev?.status ?? ("pending" as const)),
+      ...(dateChanged ? { last_notified_at: null, payed_at: null } : {}),
     };
   });
 

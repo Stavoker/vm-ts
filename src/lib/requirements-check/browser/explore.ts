@@ -87,9 +87,9 @@ export async function scrollPageFully(
       });
     }
 
-    await page.evaluate(() => {
-      window.scrollBy(0, Math.max(window.innerHeight * 0.85, 700));
-    });
+    await page.evaluate((stepSize) => {
+      window.scrollBy(0, stepSize);
+    }, Math.max(metrics.innerHeight * 0.9, 900));
     await page.waitForTimeout(BROWSER_SCROLL_PAUSE_MS);
   }
 

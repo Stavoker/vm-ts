@@ -96,8 +96,8 @@ export function RequirementsCheckPanel() {
   const [password, setPassword] = useState("");
   const [loginPageUrl, setLoginPageUrl] = useState("");
 
-  const loadSessions = useCallback(async () => {
-    setError(null);
+  const loadSessions = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setError(null);
     try {
       const response = await fetch("/api/requirements-check");
       const data = await readJsonResponse<{ sessions: RequirementCheckSession[]; error?: string }>(
@@ -106,7 +106,12 @@ export function RequirementsCheckPanel() {
       if (!response.ok) throw new Error(data.error || "Не удалось загрузить");
       setSessions(data.sessions);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка");
+      const message = err instanceof Error ? err.message : "Ошибка";
+      if (options?.silent) {
+        console.warn("[requirements-check] sessions refresh failed:", message);
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -162,9 +167,7 @@ export function RequirementsCheckPanel() {
     if (sessionsRefreshTimerRef.current) return;
     sessionsRefreshTimerRef.current = setTimeout(() => {
       sessionsRefreshTimerRef.current = null;
-      void loadSessions().catch((err) => {
-        console.warn("[requirements-check] sessions refresh failed:", err);
-      });
+      void loadSessions({ silent: true });
     }, SESSIONS_REFRESH_DEBOUNCE_MS);
   }, [loadSessions]);
 
@@ -174,9 +177,9 @@ export function RequirementsCheckPanel() {
 
   useEffect(() => {
     if (!activeId) return;
-    void loadScan(activeId).catch((err) =>
-      setError(err instanceof Error ? err.message : "Ошибка"),
-    );
+    void loadScan(activeId).catch((err) => {
+      console.warn("[requirements-check] initial scan load failed:", err);
+    });
 
     const source = new EventSource(`/api/requirements-check/${activeId}/events`);
     source.addEventListener("event", (message) => {
@@ -185,7 +188,7 @@ export function RequirementsCheckPanel() {
         setEvents((prev) => dedupeScanEvents([...prev, event]));
         scheduleScanRefresh(activeId, IMMEDIATE_REFRESH_EVENTS.has(event.event_type));
         if (IMMEDIATE_REFRESH_EVENTS.has(event.event_type)) {
-          void loadSessions();
+          void loadSessions({ silent: true });
         } else {
           scheduleSessionsRefresh();
         }

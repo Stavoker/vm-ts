@@ -1,5 +1,6 @@
 import type { ClickActivity } from "./click-navigator";
 import type { ScrollProgress } from "./explore";
+import { BROWSER_SCROLL_EVENT_MIN_MS } from "../constants";
 
 type EmitFn = (type: string, message: string, payload?: Record<string, unknown>) => Promise<void>;
 type SetCurrentFn = (page: string | null, action: string | null) => Promise<void>;
@@ -39,12 +40,24 @@ export function createBrowserActivityHooks(input: {
   emit: EmitFn;
   setCurrent: SetCurrentFn;
 }) {
+  let lastScrollEventAt = 0;
+
   return {
     onNavigate: async (url: string) => {
       await input.setCurrent(url, "Opening page");
       await input.emit("page_opened", `Opened ${truncateUrl(url)}`, { url });
     },
     onScrollProgress: async (progress: ScrollProgress) => {
+      const now = Date.now();
+      const isFinalStep = progress.step >= progress.maxSteps;
+      const shouldPersist =
+        progress.step === 1 ||
+        isFinalStep ||
+        now - lastScrollEventAt >= BROWSER_SCROLL_EVENT_MIN_MS;
+
+      if (!shouldPersist) return;
+
+      lastScrollEventAt = now;
       await input.setCurrent(progress.url, `Scrolling (step ${progress.step})`);
       await input.emit(
         "page_scroll",
