@@ -19,6 +19,7 @@ import type {
   ScanContext,
 } from "../types";
 import { runDefinitionAiReview } from "./ai-helpers";
+import { reviewsChecker, socialMediaChecker } from "./social-reviews";
 import {
   findCartPage,
   findCommerceFlowPage,
@@ -306,21 +307,8 @@ export const HANDLER_REGISTRY: Record<string, RequirementHandler> = {
       : fail(definition, "Visa/Mastercard logos or references were not found in footer/payment areas.");
   },
 
-  socialMediaChecker: (definition, context) => {
-    const text = pageText(context);
-    const hasSocial = /(facebook|instagram|linkedin|twitter|x\.com|youtube|tiktok)/i.test(text);
-    return hasSocial
-      ? pass(definition, "Social media links were discovered on the website.")
-      : manual(definition, "No social media links were discovered automatically; verify manually if optional.");
-  },
-
-  reviewsChecker: (definition, context) => {
-    const text = pageText(context);
-    const hasReviews = /review|testimonial|rating|stars/i.test(text);
-    return hasReviews
-      ? pass(definition, "Reviews/testimonials content was detected.")
-      : manual(definition, "Reviews are optional; none were detected automatically.");
-  },
+  socialMediaChecker,
+  reviewsChecker,
 
   chatbotChecker: (definition, context) => {
     const text = pageText(context);

@@ -46,7 +46,7 @@ describe("pdf report helpers", () => {
           explanation: "HTTPS is enabled.",
         }),
       ),
-    ).toBe("");
+    ).toBe("HTTPS is enabled.");
   });
 
   it("does not duplicate manual instruction boilerplate", () => {

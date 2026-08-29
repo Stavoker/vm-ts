@@ -474,6 +474,9 @@ export function RequirementsCheckPanel() {
                           <span className="flex-1 text-sm">{row.requirement_name}</span>
                           <span className="text-xs text-gray-500">{row.status}</span>
                         </button>
+                        {row.explanation ? (
+                          <p className="mt-1 line-clamp-3 pl-5 text-xs text-gray-500">{row.explanation}</p>
+                        ) : null}
                         {expandedId === row.id ? (
                           <div className="mt-2 space-y-1 pl-5 text-xs text-gray-600">
                             <p>{row.explanation}</p>

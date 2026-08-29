@@ -252,7 +252,7 @@ export async function generateRequirementsPdf(input: {
     .font("Helvetica")
     .fontSize(7.5)
     .text(
-      `${input.results.length} requirements · compact view (issues only show comments; passed items show name only)`,
+      `${input.results.length} requirements · compact view with page-specific notes where available`,
       MARGIN,
       doc.y,
       { width: CONTENT_WIDTH },

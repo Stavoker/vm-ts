@@ -9,8 +9,9 @@ export const PDF_STATUS_COLORS: Record<
   MANUAL: { fill: "#fef9c3", text: "#854d0e", label: "MANUAL" },
 };
 
-const DEFAULT_COMMENT_MAX = 120;
-const FAIL_COMMENT_MAX = 200;
+const DEFAULT_COMMENT_MAX = 160;
+const FAIL_COMMENT_MAX = 280;
+const PASS_COMMENT_MAX = 140;
 
 function stripRedundantManualInstruction(row: RequirementResultRow): string {
   const explanation = row.explanation.trim();
@@ -31,23 +32,33 @@ function truncate(text: string, maxLength: number): string {
   return `${text.slice(0, maxLength - 1).trim()}…`;
 }
 
-/** Short comment for compact PDF rows. PASS items return empty string. */
+/** Compact comment for PDF rows; includes page-specific PASS explanations when present. */
 export function buildCompactComment(
   row: RequirementResultRow,
   maxLength = DEFAULT_COMMENT_MAX,
 ): string {
-  if (row.status === "PASS") return "";
+  const limit =
+    row.status === "FAIL"
+      ? FAIL_COMMENT_MAX
+      : row.status === "PASS"
+        ? PASS_COMMENT_MAX
+        : maxLength;
 
-  const parts = [stripRedundantManualInstruction(row)];
+  const parts: string[] = [];
+  if (row.explanation?.trim()) {
+    parts.push(row.status === "PASS" ? row.explanation.trim() : stripRedundantManualInstruction(row));
+  } else if (row.status !== "PASS") {
+    parts.push(stripRedundantManualInstruction(row));
+  }
 
   const url = row.checked_url || row.checkedUrl;
-  if (url) parts.push(url);
+  if (url && !parts.join(" ").includes(url)) parts.push(url);
 
-  if (row.evidence?.calculatedValue) {
+  if (row.evidence?.calculatedValue && row.status !== "PASS") {
     parts.push(String(row.evidence.calculatedValue));
   }
 
-  return truncate(parts.filter(Boolean).join(" · "), maxLength);
+  return truncate(parts.filter(Boolean).join(" · "), limit);
 }
 
 /** Slightly longer comment for the critical-failures summary block. */
