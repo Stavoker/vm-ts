@@ -76,6 +76,20 @@ const AI_REQUIREMENT_HINTS: Record<string, string> = {
     "Use the homepage screenshot to judge whether imagery/logos look low-quality or generic stock.",
   ensure_all_logos_are_unique_for_each_website_legally_used_an:
     "Review logos/branding in the screenshot for uniqueness and professional quality.",
+  upload_the_website_logo:
+    "Inspect header/branding in the full-page homepage screenshot. PASS if a logo image OR text/wordmark brand name is visible (text logos count). FAIL only if no branding at all.",
+  link_all_active_social_media_handles_to_the_website:
+    "Inspect the footer and header in the screenshot for social network icons/links (Facebook, Instagram, X/Twitter, LinkedIn, YouTube, TikTok). PASS if at least one is visible. FAIL if none visible. Do not PASS from privacy-policy text alone.",
+  contact_form_available:
+    "Look for a contact form, support email/mailto link, help page CTA, or live chat widget in the screenshot/HTML. PASS if users can reach support by form, email, or chat. FAIL only if no contact path is visible.",
+  ensure_all_products_have_complete_descriptions:
+    "For SaaS/digital products, feature/pricing/credits pages count as product descriptions. PASS if services and what is sold are clearly described on the site. FAIL if offerings are unclear.",
+  add_customer_reviews_testimonials_and_ratings:
+    "Look for testimonial sections, customer quotes, or star ratings in the screenshot. FAIL/MANUAL if none; do not confuse app UI like 'review document' with customer reviews.",
+  add_visa_latest_and_mastercard_logos_in_the_footer_or_paymen:
+    "Check footer/payment areas in the screenshot for Visa/Mastercard marks. PASS if both visible, MANUAL if optional and absent.",
+  prices_are_market_consistent_for_the_industry_and_commercial:
+    "PASS when pricing/credits/packages are visible and commercially plausible for a SaaS/digital service. Do not require external industry benchmarks. FAIL only if pricing is absent or clearly absurd.",
 };
 
 const AI_HANDLER_HINTS: Record<string, string> = {
@@ -91,6 +105,16 @@ const AI_HANDLER_HINTS: Record<string, string> = {
     "Review public website pages (homepage, features, pricing, about) as the business plan source. PASS when the topic is clearly described and not placeholder text.",
   aiReviewChecker:
     "Use website-visible evidence only. PASS when clearly supported; do not require uploaded documents.",
+  logoChecker:
+    "Use the full-page homepage screenshot. Text/wordmark branding in header counts as a logo.",
+  socialMediaChecker:
+    "Use the screenshot footer/header to verify social icons/links visually, not just HTML text mentions.",
+  contactFormChecker:
+    "Accept contact forms, support email links, help CTAs, or chat widgets as contact availability.",
+  productDescriptionChecker:
+    "Treat SaaS features/pricing/credits pages as product/service descriptions.",
+  reviewsChecker:
+    "Look for customer testimonials/review sections in the screenshot, not in-app review buttons.",
 };
 
 function buildBatchSystemPrompt(batchGroup: AiReviewBatchGroup): string {
@@ -108,9 +132,10 @@ function buildBatchSystemPrompt(batchGroup: AiReviewBatchGroup): string {
     evidenceHint,
     "Return strict JSON only:",
     '{"reviews":[{"requirementId":"...","status":"PASS"|"MANUAL"|"FAIL","confidence":0.0-1.0,"explanation":"..."}]}',
-    "Use PASS when the public website clearly supports the requirement and content is not placeholder/lorem ipsum.",
-    "Use MANUAL only when the topic is genuinely absent from the website or requires internal documents not visible online.",
-    "Use FAIL only for clear non-compliance or obvious placeholder/template content.",
+    "Prefer PASS or FAIL based on visible website evidence. Use MANUAL only when the screenshot/HTML truly cannot decide.",
+    "For visual checks: inspect header, footer, hero, and pricing areas in the screenshot. Mention the exact area used (e.g. footer, header).",
+    "Text/wordmark logos count as logos. Footer social icons count if visible. SaaS credits/pricing count as product descriptions.",
+    "Use FAIL when the requirement is clearly missing from the public website.",
     "Include one review object per requirement id provided.",
   ].join("\n");
 }

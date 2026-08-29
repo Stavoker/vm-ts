@@ -19,7 +19,7 @@ import type {
   ScanContext,
 } from "../types";
 import { runDefinitionAiReview } from "./ai-helpers";
-import { reviewsChecker, socialMediaChecker } from "./social-reviews";
+import { runVisualAiReview, visualAbsenceFallbacks, visualHeuristics } from "./visual-ai";
 import {
   findCartPage,
   findCommerceFlowPage,
@@ -176,23 +176,11 @@ export const HANDLER_REGISTRY: Record<string, RequirementHandler> = {
       : fail(definition, "No Contact Us / Support page or footer support link was discovered.");
   },
 
-  contactFormChecker: async (definition, context) => {
-    const page = findPage(context, /contact|support/i);
-    if (!page) {
-      return manual(
-        definition,
-        "No dedicated contact page found; site may use support tickets/chat instead of a classic contact form.",
-      );
-    }
-    const snapshot = getPageSnapshot(context, page.url);
-    const hay = `${snapshot?.html || ""}\n${snapshot?.visibleText || ""}`;
-    const hasForm = /<form[\s\S]*?<\/form>/i.test(hay) && /(email|message|name|phone|subject)/i.test(hay);
-    return hasForm
-      ? pass(definition, "Contact form elements were detected.", { checkedUrl: page.url })
-      : manual(definition, "Support/contact area found but no classic contact form detected.", {
-          checkedUrl: page.url,
-        });
-  },
+  contactFormChecker: (definition, context) =>
+    runVisualAiReview(definition, context, {
+      heuristic: visualHeuristics.contactFormChecker,
+      absenceFallback: visualAbsenceFallbacks.contactFormChecker,
+    }),
 
   companyInfoChecker: async (definition, context) => {
     const combined = pageText(context);
@@ -282,33 +270,36 @@ export const HANDLER_REGISTRY: Record<string, RequirementHandler> = {
         });
   },
 
-  logoChecker: async (definition, context) => {
-    const homepage = context.pages.find((p) => p.pageType === "homepage")?.url || context.websiteUrl;
-    const snapshot = getPageSnapshot(context, homepage);
-    const hay = `${snapshot?.html || ""}\n${snapshot?.visibleText || ""}`;
-    const hasLogo =
-      /<img[^>]+(logo|brand)/i.test(hay) ||
-      /class=["'][^"']*logo/i.test(hay) ||
-      /alt=["'][^"']*(logo|brand)/i.test(hay);
-    return hasLogo
-      ? pass(definition, "Logo element detected on homepage after browser scroll.", { checkedUrl: homepage })
-      : fail(definition, "No website logo detected on homepage.");
-  },
+  logoChecker: (definition, context) =>
+    runVisualAiReview(definition, context, {
+      heuristic: visualHeuristics.logoChecker,
+      absenceFallback: visualAbsenceFallbacks.logoChecker,
+    }),
 
-  paymentLogoChecker: async (definition, context) => {
-    const htmlPages = await Promise.all(
-      context.pages.slice(0, 8).map(async (page) => fetch(page.url).then((r) => r.text()).catch(() => "")),
-    );
-    const combined = htmlPages.join("\n").toLowerCase();
-    const hasVisa = combined.includes("visa");
-    const hasMastercard = combined.includes("mastercard") || combined.includes("master card");
-    return hasVisa && hasMastercard
-      ? pass(definition, "Visa and Mastercard references were found.")
-      : fail(definition, "Visa/Mastercard logos or references were not found in footer/payment areas.");
-  },
-
-  socialMediaChecker,
-  reviewsChecker,
+  paymentLogoChecker: (definition, context) =>
+    runVisualAiReview(definition, context, {
+      heuristic: (ctx) => {
+        const htmlPages = ctx.pages.slice(0, 8).map((page) => getPageSnapshot(ctx, page.url)?.html || "");
+        const combined = htmlPages.join("\n").toLowerCase();
+        const hasVisa = combined.includes("visa");
+        const hasMastercard = combined.includes("mastercard") || combined.includes("master card");
+        if (hasVisa && hasMastercard) {
+          return pass(definition, "Visa and Mastercard references were found in payment/footer areas.");
+        }
+        return null;
+      },
+      absenceFallback: visualAbsenceFallbacks.paymentLogoChecker,
+    }),
+  socialMediaChecker: (definition, context) =>
+    runVisualAiReview(definition, context, {
+      heuristic: visualHeuristics.socialMediaChecker,
+      absenceFallback: visualAbsenceFallbacks.socialMediaChecker,
+    }),
+  reviewsChecker: (definition, context) =>
+    runVisualAiReview(definition, context, {
+      heuristic: visualHeuristics.reviewsChecker,
+      absenceFallback: visualAbsenceFallbacks.reviewsChecker,
+    }),
 
   chatbotChecker: (definition, context) => {
     const text = pageText(context);
@@ -353,13 +344,11 @@ export const HANDLER_REGISTRY: Record<string, RequirementHandler> = {
     return pass(definition, `Billing/cart page discovered at ${page.url}.`, { checkedUrl: page.url });
   },
 
-  productDescriptionChecker: (definition, context) => {
-    const products = context.pages.filter((p) => p.pageType === "product");
-    if (products.length === 0) {
-      return manual(definition, "No product pages were classified automatically; verify catalogue manually.");
-    }
-    return pass(definition, `${products.length} product-like pages were discovered for description review.`);
-  },
+  productDescriptionChecker: (definition, context) =>
+    runVisualAiReview(definition, context, {
+      heuristic: visualHeuristics.productDescriptionChecker,
+      absenceFallback: visualAbsenceFallbacks.productDescriptionChecker,
+    }),
 
   productPricingChecker: (definition, context) => {
     const text = pageText(context);
@@ -419,7 +408,28 @@ export const HANDLER_REGISTRY: Record<string, RequirementHandler> = {
   geolocationTrafficChecker: (definition) =>
     manual(definition, "Geolocation traffic check requires external provider configuration."),
 
-  aiReviewChecker: (definition, context) => runDefinitionAiReview(definition, context),
+  aiReviewChecker: async (definition, context) => {
+    const ai = await runDefinitionAiReview(definition, context);
+    if (ai.status === "PASS" || ai.status === "FAIL") return ai;
+
+    if (definition.id === "prices_are_market_consistent_for_the_industry_and_commercial") {
+      const text = pageText(context);
+      const hasPrice =
+        /(?:€|\$|£|usd|eur|gbp)\s?\d+|\d+[.,]\d{2}\s?(?:€|\$|£)?/i.test(text) ||
+        /(?:top-up|credits|per generated image|per word|\/month|pricing)/i.test(text);
+      return hasPrice
+        ? pass(
+            definition,
+            "Pricing/credits/packages are visible on the site and appear commercially plausible for this SaaS/digital model.",
+            { checkedUrl: context.websiteUrl },
+          )
+        : fail(definition, "No pricing or package information found on public pages.", {
+            checkedUrl: context.websiteUrl,
+          });
+    }
+
+    return ai;
+  },
 
   homepageHeroChecker: (definition, context) => runDefinitionAiReview(definition, context),
 

@@ -9,6 +9,12 @@ export const AI_REQUIREMENT_BATCH_GROUP: Record<string, AiReviewBatchGroup> = {
   ensure_all_logos_are_unique_for_each_website_legally_used_an: "visual",
   no_low_quality_stock_imagery_images_or_logos: "visual",
   if_multiple_sites_use_the_same_template_they_are_materially_: "visual",
+  upload_the_website_logo: "visual",
+  link_all_active_social_media_handles_to_the_website: "visual",
+  contact_form_available: "visual",
+  ensure_all_products_have_complete_descriptions: "visual",
+  add_customer_reviews_testimonials_and_ratings: "visual",
+  add_visa_latest_and_mastercard_logos_in_the_footer_or_paymen: "visual",
   all_website_content_must_be_unique_clear_and_grammatically_c: "content",
   no_excessive_chatgpt_ai_generated_text_use_minimal_or_natura: "content",
   prices_are_market_consistent_for_the_industry_and_commercial: "content",
@@ -33,6 +39,13 @@ export const AI_REQUIREMENT_BATCH_GROUP: Record<string, AiReviewBatchGroup> = {
 const VISUAL_HANDLERS = new Set([
   "homepageHeroChecker",
   "websiteSimilarityChecker",
+  "logoChecker",
+  "socialMediaChecker",
+  "contactFormChecker",
+  "productDescriptionChecker",
+  "reviewsChecker",
+  "aiReviewChecker",
+  "paymentLogoChecker",
 ]);
 
 const CONTENT_HANDLERS = new Set(["contentQualityChecker"]);

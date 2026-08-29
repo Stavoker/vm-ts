@@ -21,6 +21,12 @@ export const AI_REVIEW_HANDLERS = new Set([
   "websiteSimilarityChecker",
   "kybVisibilityChecker",
   "businessPlanAiChecker",
+  "logoChecker",
+  "socialMediaChecker",
+  "contactFormChecker",
+  "productDescriptionChecker",
+  "reviewsChecker",
+  "paymentLogoChecker",
 ]);
 
 const AI_BATCH_CACHE_KEY = "ai-batch-reviews";
