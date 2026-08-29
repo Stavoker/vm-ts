@@ -36,7 +36,7 @@ export function Dashboard() {
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastCheckAt, setLastCheckAt] = useState<number | null>(null);
-  const [nextCheckAt, setNextCheckAt] = useState(
+  const [nextRefreshAt, setNextRefreshAt] = useState(
     () => Date.now() + CHECK_INTERVAL_MS,
   );
   const [now, setNow] = useState(() => Date.now());
@@ -44,13 +44,14 @@ export function Dashboard() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const checkingRef = useRef(false);
 
-  const load = useCallback(async () => {
+  const refreshSites = useCallback(async () => {
     setError(null);
     try {
       const response = await fetch("/api/sites");
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Не удалось загрузить");
       setSites(data.sites as Site[]);
+      setNextRefreshAt(Date.now() + CHECK_INTERVAL_MS);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка загрузки");
     } finally {
@@ -58,46 +59,42 @@ export function Dashboard() {
     }
   }, []);
 
-  const checkAll = useCallback(
-    async (reason: "manual" | "timer" | "startup") => {
-      if (checkingRef.current) return;
-      checkingRef.current = true;
-      setChecking(true);
-      setError(null);
+  const checkAll = useCallback(async () => {
+    if (checkingRef.current) return;
+    checkingRef.current = true;
+    setChecking(true);
+    setError(null);
 
-      try {
-        const response = await fetch("/api/check", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Проверка не удалась");
-        setLastCheckAt(Date.now());
-        setNextCheckAt(Date.now() + CHECK_INTERVAL_MS);
-        await load();
-        console.log(`[ui] check (${reason}):`, data);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Ошибка проверки");
-      } finally {
-        checkingRef.current = false;
-        setChecking(false);
-      }
-    },
-    [load],
-  );
+    try {
+      const response = await fetch("/api/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Проверка не удалась");
+      setLastCheckAt(Date.now());
+      await refreshSites();
+      console.log("[ui] manual check:", data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ошибка проверки");
+    } finally {
+      checkingRef.current = false;
+      setChecking(false);
+    }
+  }, [refreshSites]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void refreshSites();
+  }, [refreshSites]);
 
   useEffect(() => {
     const startup = setTimeout(() => {
-      void load();
+      void refreshSites();
     }, 1500);
 
     const interval = setInterval(() => {
-      void load();
+      void refreshSites();
     }, CHECK_INTERVAL_MS);
 
     const clock = setInterval(() => {
@@ -109,7 +106,7 @@ export function Dashboard() {
       clearInterval(interval);
       clearInterval(clock);
     };
-  }, [checkAll]);
+  }, [refreshSites]);
 
   const counts = useMemo(() => {
     const next = {
@@ -147,7 +144,7 @@ export function Dashboard() {
             ? "Все сайты"
             : STATUS_LABELS[view];
 
-  const countdown = formatCountdown(nextCheckAt - now);
+  const countdown = formatCountdown(nextRefreshAt - now);
   const lastCheckLabel = lastCheckAt
     ? new Intl.DateTimeFormat("ru-RU", {
         hour: "2-digit",
@@ -164,7 +161,7 @@ export function Dashboard() {
         counts={counts}
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
-        nextCheckLabel={checking ? "сейчас…" : countdown}
+        nextRefreshLabel={checking ? "сейчас…" : countdown}
       />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:ml-64">
@@ -191,7 +188,7 @@ export function Dashboard() {
             {view !== "add" && view !== "telegram" && view !== "payments" && view !== "requirements" ? (
               <button
                 type="button"
-                onClick={() => void checkAll("manual")}
+                onClick={() => void checkAll()}
                 disabled={checking || loading}
                 className="h-8 bg-gray-900 px-3 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60"
               >
@@ -207,7 +204,7 @@ export function Dashboard() {
           {view === "add" ? (
             <AddSiteForm
               onCreated={() => {
-                void load();
+                void refreshSites();
                 setView("sites");
               }}
             />
@@ -220,7 +217,7 @@ export function Dashboard() {
           ) : loading ? (
             <p className="text-sm text-gray-500">Загрузка…</p>
           ) : (
-            <SitesTable sites={visibleSites} onChanged={() => void load()} />
+            <SitesTable sites={visibleSites} onChanged={() => void refreshSites()} />
           )}
 
           {!loading &&

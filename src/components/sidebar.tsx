@@ -11,7 +11,7 @@ type Props = {
   counts: Record<"all" | SiteStatus, number>;
   mobileOpen: boolean;
   onCloseMobile: () => void;
-  nextCheckLabel: string;
+  nextRefreshLabel: string;
 };
 
 const STATUS_ITEMS: SiteStatus[] = [
@@ -28,7 +28,7 @@ export function Sidebar({
   counts,
   mobileOpen,
   onCloseMobile,
-  nextCheckLabel,
+  nextRefreshLabel,
 }: Props) {
   function go(next: NavView) {
     onNavigate(next);
@@ -117,9 +117,12 @@ export function Sidebar({
         </nav>
 
         <div className="border-t border-white/10 px-4 py-3 text-xs text-gray-500">
-          <div>Автопроверка: каждые 10 мин</div>
+          <div>Обновление данных: каждые 10 мин</div>
           <div className="mt-1 tabular-nums text-gray-400">
-            Следующая через {nextCheckLabel}
+            Следующее через {nextRefreshLabel}
+          </div>
+          <div className="mt-2 text-[11px] leading-relaxed text-gray-600">
+            Проверка сайтов — кнопка «Проверить сейчас» или фон на сервере
           </div>
         </div>
       </aside>
