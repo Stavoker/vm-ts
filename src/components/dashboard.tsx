@@ -93,11 +93,11 @@ export function Dashboard() {
 
   useEffect(() => {
     const startup = setTimeout(() => {
-      void checkAll("startup");
+      void load();
     }, 1500);
 
     const interval = setInterval(() => {
-      void checkAll("timer");
+      void load();
     }, CHECK_INTERVAL_MS);
 
     const clock = setInterval(() => {
@@ -185,8 +185,8 @@ export function Dashboard() {
               {checking
                 ? "Идёт проверка…"
                 : lastCheckLabel
-                  ? `Последняя: ${lastCheckLabel} · следующая через ${countdown}`
-                  : `Следующая проверка через ${countdown}`}
+                  ? `Последняя проверка: ${lastCheckLabel} · обновление через ${countdown}`
+                  : `Обновление данных через ${countdown}`}
             </span>
             {view !== "add" && view !== "telegram" && view !== "payments" && view !== "requirements" ? (
               <button

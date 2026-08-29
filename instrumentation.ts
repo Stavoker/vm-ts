@@ -7,6 +7,19 @@ export async function register() {
     return;
   }
 
+  if (process.env.MONITOR_DISABLED === "true") {
+    console.log("[monitor] disabled via MONITOR_DISABLED=true");
+    return;
+  }
+
+  // Avoid duplicate checks against the same Supabase when local dev and Render run together.
+  if (process.env.NODE_ENV === "development" && process.env.ENABLE_LOCAL_MONITOR !== "true") {
+    console.log(
+      "[monitor] local dev: auto-check disabled (set ENABLE_LOCAL_MONITOR=true to enable)",
+    );
+    return;
+  }
+
   const { CHECK_INTERVAL_MS, REMINDER_INTERVAL_MS } = await import(
     "./src/lib/constants"
   );

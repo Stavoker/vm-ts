@@ -5,6 +5,11 @@ import {
 } from "@/lib/domain-check";
 import type { CheckResult, SiteStatus } from "@/lib/types";
 
+const HTTP_TIMEOUT_MS = 45_000;
+const HTTP_BODY_TIMEOUT_MS = 30_000;
+const HTTP_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 2_000;
+
 const PAYMENT_PATTERNS = [
   /payment\s*required/i,
   /pay\s*(to\s*)?(renew|continue|unlock)/i,
@@ -40,6 +45,10 @@ const BLOCKED_PATTERNS = [
   /акаунт\s*(заблокован|призупинен)/i,
   /аккаунт\s*(заблокирован|приостановлен)/i,
 ];
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function matchReason(
   body: string,
@@ -96,26 +105,54 @@ function classifyFromBody(
   return null;
 }
 
-export async function checkSiteUrl(url: string): Promise<CheckResult> {
-  const started = Date.now();
-  const domainIssue = await checkDomainHealth(url);
-  if (domainIssue) {
-    return {
-      ...domainIssue,
-      response_time_ms: Date.now() - started,
-    };
+function timeoutReason(seconds: number) {
+  return `Таймаут ответа (${seconds} сек)`;
+}
+
+function isTransientHttpFailure(result: CheckResult): boolean {
+  if (result.status !== "offline") return false;
+  const reason = result.status_reason || "";
+  return (
+    reason.includes("Таймаут") ||
+    /fetch failed|network|ECONN|ETIMEDOUT|socket|aborted|abort/i.test(reason)
+  );
+}
+
+async function readResponseBody(
+  response: Response,
+  contentType: string,
+): Promise<string> {
+  if (
+    !contentType.includes("text") &&
+    !contentType.includes("json") &&
+    !contentType.includes("html") &&
+    contentType
+  ) {
+    return "";
   }
+
+  const bodyPromise = response.text();
+  const timeoutPromise = new Promise<string>((_, reject) => {
+    setTimeout(() => reject(new Error("body-timeout")), HTTP_BODY_TIMEOUT_MS);
+  });
+
+  return (await Promise.race([bodyPromise, timeoutPromise])).slice(0, 80_000);
+}
+
+async function checkSiteHttpOnce(url: string): Promise<CheckResult> {
+  const started = Date.now();
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 60_000);
+    const timeout = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
 
     const response = await fetch(url, {
       method: "GET",
       redirect: "follow",
       signal: controller.signal,
       headers: {
-        "User-Agent": "VitrinaMonitor/1.0 (+admin-panel)",
+        "User-Agent":
+          "Mozilla/5.0 (compatible; VitrinaMonitor/1.0; +https://github.com/Stavoker/vm-ts)",
         Accept: "text/html,application/json;q=0.9,*/*;q=0.8",
       },
       cache: "no-store",
@@ -126,16 +163,7 @@ export async function checkSiteUrl(url: string): Promise<CheckResult> {
     const responseTime = Date.now() - started;
     const httpStatus = response.status;
     const contentType = response.headers.get("content-type") || "";
-    let body = "";
-
-    if (
-      contentType.includes("text") ||
-      contentType.includes("json") ||
-      contentType.includes("html") ||
-      !contentType
-    ) {
-      body = (await response.text()).slice(0, 80_000);
-    }
+    const body = await readResponseBody(response, contentType);
 
     const parkingRedirect = classifyParkingRedirect(url, response.url);
     if (parkingRedirect) {
@@ -198,10 +226,46 @@ export async function checkSiteUrl(url: string): Promise<CheckResult> {
       http_status: null,
       response_time_ms: responseTime,
       status_reason: message.includes("abort")
-        ? "Таймаут ответа (1 мин)"
-        : message,
+        ? timeoutReason(Math.round(HTTP_TIMEOUT_MS / 1000))
+        : message.includes("body-timeout")
+          ? timeoutReason(Math.round(HTTP_BODY_TIMEOUT_MS / 1000))
+          : message,
     };
   }
+}
+
+export async function checkSiteUrl(url: string): Promise<CheckResult> {
+  const started = Date.now();
+  const domainIssue = await checkDomainHealth(url);
+  if (domainIssue) {
+    return {
+      ...domainIssue,
+      response_time_ms: Date.now() - started,
+    };
+  }
+
+  let lastResult: CheckResult | null = null;
+
+  for (let attempt = 1; attempt <= HTTP_ATTEMPTS; attempt += 1) {
+    const result = await checkSiteHttpOnce(url);
+    if (result.status === "online" || !isTransientHttpFailure(result)) {
+      return result;
+    }
+
+    lastResult = result;
+    if (attempt < HTTP_ATTEMPTS) {
+      await sleep(RETRY_DELAY_MS);
+    }
+  }
+
+  return (
+    lastResult || {
+      status: "offline",
+      http_status: null,
+      response_time_ms: Date.now() - started,
+      status_reason: "Не удалось проверить сайт",
+    }
+  );
 }
 
 /**
@@ -219,4 +283,8 @@ export function shouldNotify(
   if (previous === "online") return true;
   if (options?.isFirstCheck) return true;
   return false;
+}
+
+export function isTransientHttpFailureForTests(result: CheckResult): boolean {
+  return isTransientHttpFailure(result);
 }

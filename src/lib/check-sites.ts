@@ -7,6 +7,7 @@ export type CheckSummary = {
   checked: number;
   changed: number;
   notified: number;
+  skipped?: boolean;
   results: Array<{
     id: string;
     name: string;
@@ -19,7 +20,9 @@ export type CheckSummary = {
   }>;
 };
 
-export async function runSiteChecks(siteIds?: string[]): Promise<CheckSummary> {
+let checkInFlight: Promise<CheckSummary> | null = null;
+
+async function runSiteChecksInternal(siteIds?: string[]): Promise<CheckSummary> {
   const supabase = createServerSupabase();
 
   let query = supabase.from("sites").select("*").eq("is_active", true);
@@ -98,4 +101,17 @@ export async function runSiteChecks(siteIds?: string[]): Promise<CheckSummary> {
   }
 
   return summary;
+}
+
+export async function runSiteChecks(siteIds?: string[]): Promise<CheckSummary> {
+  if (checkInFlight) {
+    const summary = await checkInFlight;
+    return { ...summary, skipped: true };
+  }
+
+  checkInFlight = runSiteChecksInternal(siteIds).finally(() => {
+    checkInFlight = null;
+  });
+
+  return checkInFlight;
 }
