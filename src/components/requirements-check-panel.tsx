@@ -1,12 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { readJsonResponse } from "@/lib/fetch-json";
 import type {
   RequirementCheckSession,
   RequirementResultRow,
   RequirementResultStatus,
   ScanEvent,
 } from "@/lib/requirements-check/types";
+
+const SCAN_REFRESH_DEBOUNCE_MS = 2_500;
+const SESSIONS_REFRESH_DEBOUNCE_MS = 30_000;
+const IMMEDIATE_REFRESH_EVENTS = new Set([
+  "scan_completed",
+  "scan_failed",
+  "error",
+  "scan_paused",
+  "requirement_completed",
+  "discovery_completed",
+  "browser_exploration_completed",
+  "ai_review_completed",
+]);
 
 const STATUS_DOT: Record<RequirementResultStatus, string> = {
   PASS: "bg-green-500",
@@ -73,6 +87,9 @@ export function RequirementsCheckPanel() {
   const [filter, setFilter] = useState<"all" | RequirementResultStatus>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const scanRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sessionsRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadScanInFlightRef = useRef(false);
 
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [login, setLogin] = useState("");
@@ -83,9 +100,11 @@ export function RequirementsCheckPanel() {
     setError(null);
     try {
       const response = await fetch("/api/requirements-check");
-      const data = await response.json();
+      const data = await readJsonResponse<{ sessions: RequirementCheckSession[]; error?: string }>(
+        response,
+      );
       if (!response.ok) throw new Error(data.error || "Не удалось загрузить");
-      setSessions(data.sessions as RequirementCheckSession[]);
+      setSessions(data.sessions);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка");
     } finally {
@@ -93,16 +112,61 @@ export function RequirementsCheckPanel() {
     }
   }, []);
 
-  const loadScan = useCallback(async (id: string, options?: { includeEvents?: boolean }) => {
-    const response = await fetch(`/api/requirements-check/${id}`);
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Не удалось загрузить скан");
-    setActiveSession(data.session as RequirementCheckSession);
-    setResults(data.results as RequirementResultRow[]);
-    if (options?.includeEvents !== false) {
-      setEvents(dedupeScanEvents(data.events as ScanEvent[]));
+  const loadScan = useCallback(async (id: string, options?: { includeEvents?: boolean; lite?: boolean }) => {
+    if (loadScanInFlightRef.current) return;
+    loadScanInFlightRef.current = true;
+    try {
+      const query = options?.lite ? "?lite=1" : "";
+      const response = await fetch(`/api/requirements-check/${id}${query}`);
+      const data = await readJsonResponse<{
+        session: RequirementCheckSession;
+        results: RequirementResultRow[];
+        events: ScanEvent[];
+        error?: string;
+      }>(response);
+      if (!response.ok) throw new Error(data.error || "Не удалось загрузить скан");
+      setActiveSession(data.session);
+      setResults(data.results);
+      if (options?.includeEvents !== false && data.events.length > 0) {
+        setEvents(dedupeScanEvents(data.events));
+      }
+    } finally {
+      loadScanInFlightRef.current = false;
     }
   }, []);
+
+  const scheduleScanRefresh = useCallback(
+    (id: string, immediate = false) => {
+      if (scanRefreshTimerRef.current) {
+        clearTimeout(scanRefreshTimerRef.current);
+        scanRefreshTimerRef.current = null;
+      }
+
+      const run = () => {
+        void loadScan(id, { includeEvents: false, lite: true }).catch((err) => {
+          console.warn("[requirements-check] scan refresh failed:", err);
+        });
+      };
+
+      if (immediate) {
+        run();
+        return;
+      }
+
+      scanRefreshTimerRef.current = setTimeout(run, SCAN_REFRESH_DEBOUNCE_MS);
+    },
+    [loadScan],
+  );
+
+  const scheduleSessionsRefresh = useCallback(() => {
+    if (sessionsRefreshTimerRef.current) return;
+    sessionsRefreshTimerRef.current = setTimeout(() => {
+      sessionsRefreshTimerRef.current = null;
+      void loadSessions().catch((err) => {
+        console.warn("[requirements-check] sessions refresh failed:", err);
+      });
+    }, SESSIONS_REFRESH_DEBOUNCE_MS);
+  }, [loadSessions]);
 
   useEffect(() => {
     void loadSessions();
@@ -116,18 +180,37 @@ export function RequirementsCheckPanel() {
 
     const source = new EventSource(`/api/requirements-check/${activeId}/events`);
     source.addEventListener("event", (message) => {
-      const event = JSON.parse(message.data) as ScanEvent;
-      setEvents((prev) => dedupeScanEvents([...prev, event]));
-      void loadScan(activeId, { includeEvents: false });
-      void loadSessions();
+      try {
+        const event = JSON.parse(message.data) as ScanEvent;
+        setEvents((prev) => dedupeScanEvents([...prev, event]));
+        scheduleScanRefresh(activeId, IMMEDIATE_REFRESH_EVENTS.has(event.event_type));
+        if (IMMEDIATE_REFRESH_EVENTS.has(event.event_type)) {
+          void loadSessions();
+        } else {
+          scheduleSessionsRefresh();
+        }
+      } catch (err) {
+        console.warn("[requirements-check] malformed SSE event:", err);
+      }
     });
     source.addEventListener("screenshot", (message) => {
-      const payload = JSON.parse(message.data) as { dataUrl: string };
-      setLiveScreenshot(payload.dataUrl);
+      try {
+        const payload = JSON.parse(message.data) as { dataUrl: string };
+        setLiveScreenshot(payload.dataUrl);
+      } catch (err) {
+        console.warn("[requirements-check] malformed SSE screenshot:", err);
+      }
     });
+    source.onerror = () => {
+      console.warn("[requirements-check] SSE connection interrupted, will retry automatically");
+    };
 
-    return () => source.close();
-  }, [activeId, loadScan, loadSessions]);
+    return () => {
+      source.close();
+      if (scanRefreshTimerRef.current) clearTimeout(scanRefreshTimerRef.current);
+      if (sessionsRefreshTimerRef.current) clearTimeout(sessionsRefreshTimerRef.current);
+    };
+  }, [activeId, loadScan, loadSessions, scheduleScanRefresh, scheduleSessionsRefresh]);
 
   async function startScan() {
     setSubmitting(true);
@@ -143,7 +226,9 @@ export function RequirementsCheckPanel() {
           loginPageUrl: loginPageUrl || undefined,
         }),
       });
-      const data = await response.json();
+      const data = await readJsonResponse<{ session: RequirementCheckSession; error?: string }>(
+        response,
+      );
       if (!response.ok) throw new Error(data.error || "Не удалось запустить проверку");
       setActiveId(String(data.session.id));
       await loadSessions();
@@ -159,8 +244,7 @@ export function RequirementsCheckPanel() {
     setError(null);
     try {
       const response = await fetch(`/api/requirements-check/${id}`, { method: "DELETE" });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to delete audit");
+      const data = await readJsonResponse<{ ok?: boolean; error?: string }>(response);
       if (activeId === id) {
         setActiveId(null);
         setActiveSession(null);

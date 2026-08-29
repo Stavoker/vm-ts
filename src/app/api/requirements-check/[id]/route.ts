@@ -8,16 +8,17 @@ import {
 
 type Params = { params: Promise<{ id: string }> };
 
-export async function GET(_request: Request, { params }: Params) {
+export async function GET(request: Request, { params }: Params) {
   try {
     const { id } = await params;
+    const lite = new URL(request.url).searchParams.get("lite") === "1";
     const session = await getScanSession(id);
     if (!session) {
       return NextResponse.json({ error: "Scan not found" }, { status: 404 });
     }
     const [results, events] = await Promise.all([
       listRequirementResults(id),
-      listScanEvents(id),
+      lite ? Promise.resolve([]) : listScanEvents(id),
     ]);
     return NextResponse.json({ session, results, events });
   } catch (error) {
