@@ -19,6 +19,16 @@ import {
 } from "../url-utils";
 import { createClickBudget, discoverUrlsViaButtonClicks, type ClickActivity } from "./click-navigator";
 
+export type ExplorationAccum = {
+  seen: Set<string>;
+  pages: DiscoveredPage[];
+  snapshots: Map<string, PageSnapshot>;
+};
+
+export function createExplorationAccum(): ExplorationAccum {
+  return { seen: new Set(), pages: [], snapshots: new Map() };
+}
+
 export function mergeExplorationResults(
   base: { pages: DiscoveredPage[]; snapshots: Map<string, PageSnapshot> },
   extra: { pages: DiscoveredPage[]; snapshots: Map<string, PageSnapshot> },
@@ -29,7 +39,38 @@ export function mergeExplorationResults(
   const byUrl = new Map(base.pages.map((page) => [page.url, page]));
   for (const page of extra.pages) byUrl.set(page.url, page);
 
-  return { pages: [...byUrl.values()], snapshots };
+  return {
+    pages: sortDiscoveredPages([...byUrl.values()]),
+    snapshots,
+  };
+}
+
+export function sortExploreQueue(queue: Array<{ url: string; depth: number }>): void {
+  queue.sort((a, b) => a.url.localeCompare(b.url) || a.depth - b.depth);
+}
+
+export function dequeueExploreQueue(queue: Array<{ url: string; depth: number }>) {
+  sortExploreQueue(queue);
+  return queue.shift();
+}
+
+export function sortDiscoveredPages(pages: DiscoveredPage[]): DiscoveredPage[] {
+  return [...pages].sort((a, b) => a.url.localeCompare(b.url));
+}
+
+export function finalizeExplorationWithLanding(input: {
+  accum: ExplorationAccum;
+  landingUrl: string;
+  landingPage: DiscoveredPage;
+  landingSnapshot: PageSnapshot;
+}): { pages: DiscoveredPage[]; snapshots: Map<string, PageSnapshot> } {
+  input.accum.snapshots.set(input.landingUrl, input.landingSnapshot);
+  const byUrl = new Map(input.accum.pages.map((page) => [page.url, page]));
+  byUrl.set(input.landingUrl, input.landingPage);
+  return {
+    pages: sortDiscoveredPages([...byUrl.values()]),
+    snapshots: input.accum.snapshots,
+  };
 }
 
 export type ScrollProgress = {
@@ -118,7 +159,7 @@ export async function capturePageSnapshot(page: Page, url: string): Promise<Page
   };
 }
 
-async function extractDomLinks(page: Page, baseUrl: string, hostname: string): Promise<string[]> {
+export async function extractDomLinks(page: Page, baseUrl: string, hostname: string): Promise<string[]> {
   const rawLinks = await page.evaluate(() => {
     const out = new Set<string>();
     document.querySelectorAll("a[href]").forEach((node) => {
@@ -139,8 +180,10 @@ async function extractDomLinks(page: Page, baseUrl: string, hostname: string): P
     if (!url || !isSameSite(url, hostname) || !isCrawlableUrl(url)) continue;
     normalized.push(url);
   }
-  return dedupeUrls(normalized);
+  return dedupeUrls(normalized).sort((a, b) => a.localeCompare(b));
 }
+
+type ExploreQueueItem = { url: string; depth: number };
 
 export async function exploreWebsiteWithBrowser(input: {
   page: Page;
@@ -149,6 +192,7 @@ export async function exploreWebsiteWithBrowser(input: {
   seedUrls?: string[];
   excludeUrls?: Set<string>;
   authenticatedCrawl?: boolean;
+  accum?: ExplorationAccum;
   onPage?: (page: DiscoveredPage, snapshot: PageSnapshot) => Promise<void>;
   onNavigate?: (url: string) => Promise<void>;
   onScrollProgress?: (progress: ScrollProgress) => Promise<void>;
@@ -156,94 +200,83 @@ export async function exploreWebsiteWithBrowser(input: {
   onClickActivity?: (activity: ClickActivity) => Promise<void>;
   onClickDiscovery?: (fromUrl: string, discoveredUrl: string, label?: string) => Promise<void>;
   clickBudget?: { remaining: number };
-}): Promise<{ pages: DiscoveredPage[]; snapshots: Map<string, PageSnapshot> }> {
+}): Promise<{ pages: DiscoveredPage[]; snapshots: Map<string, PageSnapshot>; accum: ExplorationAccum }> {
   const startUrl = normalizeUrl(input.websiteUrl);
-  if (!startUrl) return { pages: [], snapshots: new Map() };
+  if (!startUrl) {
+    const empty = input.accum ?? createExplorationAccum();
+    return { pages: empty.pages, snapshots: empty.snapshots, accum: empty };
+  }
 
+  const accum = input.accum ?? createExplorationAccum();
   const excluded = input.excludeUrls ?? new Set<string>();
-  const queue: Array<{ url: string; depth: number }> = [];
-  const seen = new Set<string>();
-  const snapshots = new Map<string, PageSnapshot>();
-  const pages: DiscoveredPage[] = [];
+  const queue: ExploreQueueItem[] = [];
   const clickBudget = input.clickBudget ?? createClickBudget();
+  const visitedThisPass: string[] = [];
+
+  const shouldSkip = (url: string, forVisit: boolean) => {
+    if (!url || !isCrawlableUrl(url)) return true;
+    if (isExcludedScanUrl(url, excluded)) return true;
+    if (input.authenticatedCrawl && isPublicRouteUrl(url, input.websiteUrl)) return true;
+    if (forVisit && accum.seen.has(url)) return true;
+    return false;
+  };
 
   const enqueue = (url: string, depth: number) => {
     const normalized = normalizeUrl(url);
-    if (!normalized || !isCrawlableUrl(normalized)) return;
-    if (isExcludedScanUrl(normalized, excluded)) return;
-    if (input.authenticatedCrawl && isPublicRouteUrl(normalized, input.websiteUrl)) return;
-    if (seen.has(normalized)) return;
+    if (!normalized || shouldSkip(normalized, false)) return;
+    if (accum.seen.has(normalized)) return;
     queue.push({ url: normalized, depth });
   };
 
   enqueue(startUrl, 0);
-
-  for (const seed of input.seedUrls || []) {
+  for (const seed of [...(input.seedUrls || [])].sort((a, b) => a.localeCompare(b))) {
     enqueue(seed, 1);
   }
 
-  while (queue.length > 0 && pages.length < MAX_DISCOVERED_PAGES) {
-    const current = queue.shift();
+  const visitPage = async (current: ExploreQueueItem): Promise<string[]> => {
+    await input.onNavigate?.(current.url);
+    const response = await input.page.goto(current.url, {
+      waitUntil: "domcontentloaded",
+      timeout: 45_000,
+    });
+    const httpStatus = response?.status() ?? null;
+    await input.page.waitForTimeout(500);
+    await scrollPageFully(input.page, { onProgress: input.onScrollProgress });
+    const snapshot = await capturePageSnapshot(input.page, current.url);
+    accum.snapshots.set(current.url, snapshot);
+
+    const pageType = classifyPageType(current.url, snapshot.title, snapshot.visibleText);
+    const discovered: DiscoveredPage = {
+      url: current.url,
+      pageType,
+      httpStatus,
+      title: snapshot.title,
+      checked: true,
+    };
+    accum.pages.push(discovered);
+    visitedThisPass.push(current.url);
+    await input.onPage?.(discovered, snapshot);
+    await input.onExploreProgress?.(accum.pages.length);
+
+    if (!httpStatus || httpStatus >= 400) return [];
+    return extractDomLinks(input.page, current.url, input.hostname);
+  };
+
+  // Phase 1: deterministic href-only BFS
+  while (queue.length > 0 && accum.pages.length < MAX_DISCOVERED_PAGES) {
+    const current = dequeueExploreQueue(queue);
     if (!current || current.depth > MAX_CRAWL_DEPTH) continue;
-    if (seen.has(current.url)) continue;
-    if (isExcludedScanUrl(current.url, excluded)) continue;
-    if (input.authenticatedCrawl && isPublicRouteUrl(current.url, input.websiteUrl)) continue;
-    seen.add(current.url);
+    if (shouldSkip(current.url, true)) continue;
 
-    let httpStatus: number | null = null;
+    accum.seen.add(current.url);
+
     try {
-      await input.onNavigate?.(current.url);
-      const response = await input.page.goto(current.url, {
-        waitUntil: "domcontentloaded",
-        timeout: 45_000,
-      });
-      httpStatus = response?.status() ?? null;
-      await input.page.waitForTimeout(500);
-      await scrollPageFully(input.page, { onProgress: input.onScrollProgress });
-      const snapshot = await capturePageSnapshot(input.page, current.url);
-      snapshots.set(current.url, snapshot);
-
-      const pageType = classifyPageType(
-        current.url,
-        snapshot.title,
-        snapshot.visibleText,
-      );
-      const discovered: DiscoveredPage = {
-        url: current.url,
-        pageType,
-        httpStatus,
-        title: snapshot.title,
-        checked: true,
-      };
-      pages.push(discovered);
-      await input.onPage?.(discovered, snapshot);
-      await input.onExploreProgress?.(pages.length);
-
-      if (httpStatus && httpStatus < 400) {
-        const links = await extractDomLinks(input.page, current.url, input.hostname);
-        for (const link of links) {
-          enqueue(link, current.depth + 1);
-        }
-
-        const clickDiscovered = await discoverUrlsViaButtonClicks({
-          page: input.page,
-          baseUrl: current.url,
-          websiteUrl: input.websiteUrl,
-          hostname: input.hostname,
-          seen,
-          budget: clickBudget,
-          authenticatedCrawl: input.authenticatedCrawl,
-          onActivity: input.onClickActivity,
-        });
-        for (const link of clickDiscovered) {
-          if (!isExcludedScanUrl(link, excluded)) {
-            enqueue(link, current.depth + 1);
-            await input.onClickDiscovery?.(current.url, link);
-          }
-        }
+      const links = await visitPage(current);
+      for (const link of links) {
+        enqueue(link, current.depth + 1);
       }
     } catch {
-      pages.push({
+      accum.pages.push({
         url: current.url,
         pageType: "unknown",
         httpStatus: 0,
@@ -253,5 +286,61 @@ export async function exploreWebsiteWithBrowser(input: {
     }
   }
 
-  return { pages, snapshots };
+  // Phase 2: menu-first clicks on pages visited in this pass (sorted URL order)
+  for (const pageUrl of [...visitedThisPass].sort((a, b) => a.localeCompare(b))) {
+    if (clickBudget.remaining <= 0) break;
+    if (accum.pages.length >= MAX_DISCOVERED_PAGES) break;
+
+    try {
+      await input.page.goto(pageUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
+      await input.page.waitForTimeout(400);
+      await scrollPageFully(input.page, { onProgress: input.onScrollProgress });
+
+      const clickDiscovered = await discoverUrlsViaButtonClicks({
+        page: input.page,
+        baseUrl: pageUrl,
+        websiteUrl: input.websiteUrl,
+        hostname: input.hostname,
+        seen: accum.seen,
+        budget: clickBudget,
+        authenticatedCrawl: input.authenticatedCrawl,
+        onActivity: input.onClickActivity,
+      });
+
+      for (const link of [...clickDiscovered].sort((a, b) => a.localeCompare(b))) {
+        if (isExcludedScanUrl(link, excluded)) continue;
+        if (input.authenticatedCrawl && isPublicRouteUrl(link, input.websiteUrl)) continue;
+        enqueue(link, MAX_CRAWL_DEPTH);
+        await input.onClickDiscovery?.(pageUrl, link);
+      }
+    } catch {
+      // continue with next page for click discovery
+    }
+  }
+
+  // Phase 3: visit routes discovered via clicks (href-only, deterministic)
+  while (queue.length > 0 && accum.pages.length < MAX_DISCOVERED_PAGES) {
+    const current = dequeueExploreQueue(queue);
+    if (!current || current.depth > MAX_CRAWL_DEPTH) continue;
+    if (shouldSkip(current.url, true)) continue;
+
+    accum.seen.add(current.url);
+
+    try {
+      const links = await visitPage(current);
+      for (const link of links) {
+        enqueue(link, current.depth + 1);
+      }
+    } catch {
+      accum.pages.push({
+        url: current.url,
+        pageType: "unknown",
+        httpStatus: 0,
+        title: "",
+        checked: false,
+      });
+    }
+  }
+
+  return { pages: accum.pages, snapshots: accum.snapshots, accum };
 }

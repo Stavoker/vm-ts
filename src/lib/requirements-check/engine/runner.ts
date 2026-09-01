@@ -4,7 +4,9 @@ import { createBrowserActivityHooks } from "../browser/activity-log";
 import { closeScanBrowser, launchScanBrowser, tryLogin } from "../browser/playwright";
 import {
   capturePageSnapshot,
+  createExplorationAccum,
   exploreWebsiteWithBrowser,
+  finalizeExplorationWithLanding,
   scrollPageFully,
 } from "../browser/explore";
 import { createClickBudget } from "../browser/click-navigator";
@@ -34,6 +36,7 @@ import type {
 } from "../types";
 import {
   buildAuthenticatedExploreExclusions,
+  dedupeUrls,
   filterPlatformSeedUrls,
   normalizeUrl,
 } from "../url-utils";
@@ -182,19 +185,26 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
       const platformSeedUrls = filterPlatformSeedUrls(session.website_url, pages, [
         browser.page.url(),
       ]);
+      const publicSeedUrls = dedupeUrls([
+        landingUrl,
+        ...pages.map((page) => page.url),
+      ]);
+      const exploreAccum = createExplorationAccum();
+      const clickBudget = createClickBudget(120);
 
       await emit(
         "platform_exploration_started",
-        "Exploring authenticated platform pages without returning to landing",
+        "Exploring authenticated platform pages (href-first, then menu clicks)",
       );
-      const explored = await exploreWebsiteWithBrowser({
+      await exploreWebsiteWithBrowser({
         page: browser.page,
         websiteUrl: session.website_url,
         hostname: session.hostname,
-        seedUrls: platformSeedUrls,
+        seedUrls: platformSeedUrls.length > 0 ? platformSeedUrls : [browser.page.url()],
         excludeUrls: platformExcludeUrls,
         authenticatedCrawl: true,
-        clickBudget: createClickBudget(80),
+        accum: exploreAccum,
+        clickBudget,
         ...browserActivity,
         onExploreProgress: async (visitedPages) => {
           const progress = Math.min(19, 10 + visitedPages);
@@ -216,17 +226,57 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
         },
       });
 
-      explored.snapshots.set(landingUrl, landingSnapshot);
-      pages = [landingPage, ...explored.pages.filter((page) => page.url !== landingUrl)];
-      context.pages = pages;
-      context.pageSnapshots = explored.snapshots;
-    } else {
-      await emit("browser_exploration_started", "Exploring public pages with scroll and navigation");
-      const explored = await exploreWebsiteWithBrowser({
+      await emit(
+        "public_exploration_started",
+        "Exploring public marketing/legal pages and merging with platform results",
+      );
+      await exploreWebsiteWithBrowser({
         page: browser.page,
         websiteUrl: landingUrl,
         hostname: session.hostname,
-        seedUrls: pages.map((page) => page.url),
+        seedUrls: publicSeedUrls,
+        accum: exploreAccum,
+        clickBudget,
+        ...browserActivity,
+        onExploreProgress: async (visitedPages) => {
+          const progress = Math.min(19, 10 + visitedPages);
+          await updateScanSession(sessionId, { progress_percent: progress });
+        },
+        onPage: async (page, snapshot) => {
+          await context.setCurrent(page.url, "Exploring public page");
+          await emit("page_explored", `Explored public ${page.url}`, {
+            url: page.url,
+            pageType: page.pageType,
+            placeholders: snapshot.placeholders,
+          });
+        },
+        onClickDiscovery: async (fromUrl, discoveredUrl) => {
+          await emit("navigation_discovered", `Queued public page ${discoveredUrl}`, {
+            fromUrl,
+            discoveredUrl,
+          });
+        },
+      });
+
+      const finalized = finalizeExplorationWithLanding({
+        accum: exploreAccum,
+        landingUrl,
+        landingPage,
+        landingSnapshot,
+      });
+      pages = finalized.pages;
+      context.pages = pages;
+      context.pageSnapshots = finalized.snapshots;
+    } else {
+      await emit("browser_exploration_started", "Exploring public pages with scroll and navigation");
+      const exploreAccum = createExplorationAccum();
+      await exploreWebsiteWithBrowser({
+        page: browser.page,
+        websiteUrl: landingUrl,
+        hostname: session.hostname,
+        seedUrls: dedupeUrls([landingUrl, ...pages.map((page) => page.url)]),
+        accum: exploreAccum,
+        clickBudget: createClickBudget(120),
         ...browserActivity,
         onExploreProgress: async (visitedPages) => {
           const progress = Math.min(19, 10 + visitedPages);
@@ -248,12 +298,15 @@ export async function runRequirementsScan(sessionId: string): Promise<void> {
         },
       });
 
-      explored.snapshots.set(landingUrl, landingSnapshot);
-      const byUrl = new Map(explored.pages.map((page) => [page.url, page]));
-      byUrl.set(landingUrl, landingPage);
-      pages = [...byUrl.values()];
+      const finalized = finalizeExplorationWithLanding({
+        accum: exploreAccum,
+        landingUrl,
+        landingPage,
+        landingSnapshot,
+      });
+      pages = finalized.pages;
       context.pages = pages;
-      context.pageSnapshots = explored.snapshots;
+      context.pageSnapshots = finalized.snapshots;
     }
 
     await saveDiscoveredPages(
