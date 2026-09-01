@@ -92,6 +92,98 @@ function pageWordCount(context: ScanContext, pageUrl: string): number {
   return 0;
 }
 
+function extractHeadings(html: string): string {
+  const headings: string[] = [];
+  for (const match of html.matchAll(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/gi)) {
+    headings.push(match[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
+  }
+  return headings.join("\n");
+}
+
+function pagePathname(url: string): string {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return "";
+  }
+}
+
+export type DedicatedPolicyMatchConfig = {
+  urlPathPattern: RegExp;
+  headingPattern: RegExp;
+};
+
+export function pageMatchesDedicatedPolicy(
+  page: ScanContext["pages"][number],
+  context: ScanContext,
+  config: DedicatedPolicyMatchConfig,
+): { matched: boolean; reason?: string; words: number } {
+  const snapshot = getPageSnapshot(context, page.url);
+  const words = pageWordCount(context, page.url);
+  const pathname = pagePathname(page.url);
+  const title = snapshot?.title || page.title || "";
+  const headings = snapshot?.html ? extractHeadings(snapshot.html) : "";
+  const headingHaystack = `${title}\n${headings}`;
+
+  const urlMatch = config.urlPathPattern.test(pathname);
+  const headingMatch = config.headingPattern.test(headingHaystack);
+
+  if (urlMatch && words >= 80) {
+    return { matched: true, reason: `dedicated policy URL (${pathname})`, words };
+  }
+
+  if (headingMatch && words >= 80) {
+    return { matched: true, reason: "dedicated policy heading", words };
+  }
+
+  return { matched: false, words };
+}
+
+export async function checkDedicatedPolicyPage(
+  definition: RequirementDefinition,
+  context: ScanContext,
+  config: DedicatedPolicyMatchConfig,
+): Promise<RequirementCheckResult> {
+  const policyLabel = definition.displayName.replace(/\.$/, "");
+  let best:
+    | {
+        page: ScanContext["pages"][number];
+        words: number;
+        reason: string;
+      }
+    | undefined;
+
+  for (const page of context.pages) {
+    const match = pageMatchesDedicatedPolicy(page, context, config);
+    if (!match.matched) continue;
+
+    if (!best || match.words > best.words) {
+      best = { page, words: match.words, reason: match.reason || "policy page" };
+    }
+  }
+
+  if (best) {
+    return pass(
+      definition,
+      `Found ${policyLabel} at ${best.page.url} (${best.words} words, ${best.reason}, browser-rendered).`,
+      {
+        checkedUrl: best.page.url,
+        evidence: {
+          url: best.page.url,
+          httpStatus: best.page.httpStatus,
+          textSnippet: getPageSnapshot(context, best.page.url)?.visibleText.slice(0, 240) || null,
+          timestamp: new Date().toISOString(),
+        },
+      },
+    );
+  }
+
+  return fail(
+    definition,
+    `No dedicated ${policyLabel} found. Generic terms/privacy pages or passing keyword mentions do not count. Checked ${context.pages.length} internal pages.`,
+  );
+}
+
 export async function checkLegalPage(
   definition: RequirementDefinition,
   context: ScanContext,

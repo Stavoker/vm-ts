@@ -14,7 +14,7 @@ describe("requirements registry coverage", () => {
   it("maps all master checklist requirements from source extraction", () => {
     const report = buildSourceCoverageReport();
     expect(REQUIREMENT_DEFINITIONS.length).toBe(120);
-    expect(ENABLED_WEBSITE_SCAN_REQUIREMENT_COUNT).toBe(71);
+    expect(ENABLED_WEBSITE_SCAN_REQUIREMENT_COUNT).toBe(70);
     expect(report.total).toBe(120);
     expect(report.mapped).toBe(120);
     expect(report.unmapped).toBe(0);

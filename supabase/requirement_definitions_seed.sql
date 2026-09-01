@@ -3369,7 +3369,7 @@ insert into public.requirement_definitions (
   'MANUAL_ONLY'::public.requirement_definition_type,
   1,
   'high',
-  true,
+  false,
   79,
   'documentKybChecker',
   'Manually verify: Company representative details and ID.',

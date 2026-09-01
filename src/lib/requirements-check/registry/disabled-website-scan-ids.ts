@@ -16,6 +16,7 @@ export const DISABLED_WEBSITE_SCAN_REQUIREMENT_IDS = new Set([
   "registry_extract_showing_shareholders",
   "shareholders_confirmation",
   "board_resolution_if_necessary",
+  "company_representative_details_and_id",
   // 2. Directors / UBO / shareholders
   "director_id_passport",
   "ubo_id_passport",

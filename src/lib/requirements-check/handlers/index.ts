@@ -27,6 +27,7 @@ import {
   hasAuthenticatedPlatform,
 } from "./saas-flow";
 import {
+  checkDedicatedPolicyPage,
   checkLegalPage,
   detectCompanyInfoMatch,
   fail,
@@ -63,6 +64,25 @@ const LEGAL_KEYWORDS: Record<string, string[]> = {
   payment_method_page: ["payment-method", "payment method", "payments", "stripe", "visa", "mastercard", "gpay"],
   cancellation_policy_page: ["cancellation", "cancel"],
 };
+
+const DEDICATED_POLICY_CHECKS: Record<
+  string,
+  { urlPathPattern: RegExp; headingPattern: RegExp }
+> = {
+  refund_policy_page: {
+    urlPathPattern: /\/(?:refund|returns|return-policy|refund-policy|money-back)(?:\/|$|-)/i,
+    headingPattern: /\b(refund\s+policy|return\s+policy|returns\s+policy|money[- ]back\s+policy)\b/i,
+  },
+  delivery_policy_page: {
+    urlPathPattern: /\/(?:delivery|shipping|dispatch|fulfillment)(?:\/|$|-)/i,
+    headingPattern: /\b(delivery\s+policy|shipping\s+policy|dispatch\s+policy|fulfillment\s+policy)\b/i,
+  },
+};
+
+function dedicatedPolicyHandler(requirementId: string): RequirementHandler {
+  const config = DEDICATED_POLICY_CHECKS[requirementId];
+  return (definition, context) => checkDedicatedPolicyPage(definition, context, config);
+}
 
 function legalHandler(key: string): RequirementHandler {
   return (definition, context) =>
@@ -610,6 +630,9 @@ export const HANDLER_REGISTRY: Record<string, RequirementHandler> = {
   },
 
   legalPageChecker: (definition, context) => {
+    if (DEDICATED_POLICY_CHECKS[definition.id]) {
+      return dedicatedPolicyHandler(definition.id)(definition, context);
+    }
     const name = definition.originalName.toLowerCase();
     if (name.includes("privacy")) return checkLegalPage(definition, context, ["privacy"]);
     if (name.includes("terms")) return checkLegalPage(definition, context, ["terms", "conditions"]);
