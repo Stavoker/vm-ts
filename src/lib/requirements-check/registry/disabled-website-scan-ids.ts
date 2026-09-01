@@ -1,0 +1,60 @@
+/** Requirements excluded from automated website scans (KYB docs, domain registrar proofs, etc.). */
+export const DISABLED_WEBSITE_SCAN_REQUIREMENT_IDS = new Set([
+  // 1. Domain & Hosting — registrar/WHOIS/Cloudflare proofs
+  "register_the_domain_with_com_through_godaddy_or_bigrock",
+  "use_a_company_email_address_created_from_a_different_ip_for_",
+  "provide_a_whois_screenshot_showing_domain_ownership_and_vali",
+  "activate_cloudflare_to_hide_the_server_ip_and_provide_a_scre",
+  "perform_a_reverse_ip_lookup_check_before_the_onboarding_and_",
+  "hosting_footprint_is_checked",
+  "registrant_domain_ownership_is_linked_to_the_company_or_dire",
+  "domain_ownership_proof_is_ready_registrar_account_screenshot",
+  "domain_age_is_checked_it_has_to_have_a_clear_reson_for_the_d",
+  // 1. Company registration / KYB — uploaded documents
+  "certificate_registry_extract",
+  "articles_of_association_if_requested",
+  "registry_extract_showing_shareholders",
+  "shareholders_confirmation",
+  "board_resolution_if_necessary",
+  // 2. Directors / UBO / shareholders
+  "director_id_passport",
+  "ubo_id_passport",
+  "shareholder_ids_if_required",
+  "proof_of_residential_address_for_directors_shareholders_ubo",
+  "director_ubo_cv",
+  "ubo_source_of_funds_source_of_wealth_if_required",
+  "kyc_data_consistent_with_registry_and_onboarding_form",
+  "cv",
+  "source_of_wealth",
+  // 3. Business model & business plan (if start up)
+  "business_model_clearly_described",
+  "products_services_clearly_described",
+  "target_audience_documented",
+  "target_countries_business_geography_documented",
+  "customer_acquisition_marketing_channels_documented",
+  "supplier_counterparty_structure_documented",
+  "business_plan_if_required_by_provider",
+  "business_plan_includes_month_year_of_preparation",
+  "business_plan_includes_team_size_roles_and_reporting_lines",
+  "business_plan_includes_first_year_monthly_or_quarterly_finan",
+  "forecast_revenue_is_consistent_with_requested_processing_lim",
+  "average_ticket_is_consistent_with_expected_traffic",
+  "marketing_strategy_is_described",
+  "current_project_status_documented_e_g_pre_launch_initial_pha",
+  // 4. Financial & banking documents
+  "company_bank_statement_for_the_period_requested_by_provider",
+  "company_financial_statements_if_requested",
+  "processing_history_typically_last_6_months_for_an_establishe",
+  "chargeback_refund_metrics_are_within_provider_requirements_i",
+  "all_significant_bank_transfers_are_explainable_and_matching_",
+  "ubo_source_of_funds_wealth_evidence_if_required",
+  // 5. Product supplier
+  "contract_with_supplier_of_the_product_service_if_aplicable",
+  "reseller_distribution_rights_if_applicable",
+  // 6. Licensing / regulatory — document-only items
+  "business_licence_permission_if_applicable",
+  "vat_evidence_where_applicable",
+  // 7. PCI DSS / payment security
+  "applicable_pci_dss_saq_identified",
+  "contract_with_the_getawey_provider",
+]);

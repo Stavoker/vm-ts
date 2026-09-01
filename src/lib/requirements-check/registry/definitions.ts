@@ -1,4 +1,5 @@
 import type { RequirementDefinition } from "../types";
+import { DISABLED_WEBSITE_SCAN_REQUIREMENT_IDS } from "./disabled-website-scan-ids";
 
 /** Seed source extracted from Master_check_list_for_Website_creation_and_company_onboarding. */
 /** Canonical runtime registry: public.requirement_definitions (loaded via load-definitions.ts). */
@@ -2885,4 +2886,13 @@ export const REQUIREMENT_DEFINITIONS: RequirementDefinition[] = [
   }
 ];
 
+for (const definition of REQUIREMENT_DEFINITIONS) {
+  if (DISABLED_WEBSITE_SCAN_REQUIREMENT_IDS.has(definition.id)) {
+    definition.enabled = false;
+  }
+}
+
 export const REQUIREMENT_DEFINITION_MAP = new Map(REQUIREMENT_DEFINITIONS.map((item) => [item.id, item]));
+export const ENABLED_WEBSITE_SCAN_REQUIREMENT_COUNT = REQUIREMENT_DEFINITIONS.filter(
+  (item) => item.enabled,
+).length;

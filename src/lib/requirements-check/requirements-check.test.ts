@@ -7,13 +7,14 @@ import {
 import { scoreFromResults } from "@/lib/requirements-check/score";
 import { validatePublicWebsiteUrl } from "@/lib/requirements-check/ssrf";
 import { dedupeUrls, isCrawlableUrl, normalizeUrl, buildLandingUrlSet, buildAuthenticatedExploreExclusions, filterPlatformSeedUrls, isExcludedScanUrl, isPublicRouteUrl, isLikelyAuthenticatedPath } from "@/lib/requirements-check/url-utils";
-import { REQUIREMENT_DEFINITIONS } from "@/lib/requirements-check/registry/definitions";
+import { REQUIREMENT_DEFINITIONS, ENABLED_WEBSITE_SCAN_REQUIREMENT_COUNT } from "@/lib/requirements-check/registry/definitions";
 import { mapDefinitionRow } from "@/lib/requirements-check/registry/load-definitions";
 
 describe("requirements registry coverage", () => {
   it("maps all master checklist requirements from source extraction", () => {
     const report = buildSourceCoverageReport();
     expect(REQUIREMENT_DEFINITIONS.length).toBe(120);
+    expect(ENABLED_WEBSITE_SCAN_REQUIREMENT_COUNT).toBe(71);
     expect(report.total).toBe(120);
     expect(report.mapped).toBe(120);
     expect(report.unmapped).toBe(0);
@@ -64,12 +65,7 @@ describe("requirements registry coverage", () => {
 
 describe("score calculation", () => {
   it("calculates weighted score with manual as half point", () => {
-    const defs = [
-      { ...REQUIREMENT_DEFINITIONS[0], weight: 1 },
-      { ...REQUIREMENT_DEFINITIONS[1], weight: 1 },
-      { ...REQUIREMENT_DEFINITIONS[2], weight: 1 },
-      { ...REQUIREMENT_DEFINITIONS[3], weight: 1 },
-    ];
+    const defs = REQUIREMENT_DEFINITIONS.filter((item) => item.enabled).slice(0, 4);
     const results = defs.map((def, index) => ({
       requirementId: def.id,
       status: (index === 0 ? "PASS" : index === 1 ? "MANUAL" : "FAIL") as const,
