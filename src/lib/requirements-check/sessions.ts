@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createServerSupabase } from "@/lib/supabase";
+import { isWebsiteScanDisabled } from "./registry/load-definitions";
 import { loadRequirementDefinitions } from "./registry/load-definitions";
 import type {
   RequirementCheckSession,
@@ -163,7 +164,9 @@ export async function listRequirementResults(sessionId: string): Promise<Require
     .order("requirement_category", { ascending: true })
     .order("requirement_sub_category", { ascending: true });
   if (error) throw new Error(error.message);
-  return (data || []) as RequirementResultRow[];
+  return ((data || []) as RequirementResultRow[]).filter(
+    (row) => !isWebsiteScanDisabled(row.requirement_id),
+  );
 }
 
 export async function listScanEvents(sessionId: string, limit = 200): Promise<ScanEvent[]> {

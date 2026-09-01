@@ -1,5 +1,20 @@
 import { createServerSupabase } from "@/lib/supabase";
 import type { RequirementCheckType, RequirementDefinition } from "../types";
+import { DISABLED_WEBSITE_SCAN_REQUIREMENT_IDS } from "./disabled-website-scan-ids";
+
+export function applyWebsiteScanDisabledOverrides(
+  definitions: RequirementDefinition[],
+): RequirementDefinition[] {
+  return definitions.map((definition) =>
+    DISABLED_WEBSITE_SCAN_REQUIREMENT_IDS.has(definition.id)
+      ? { ...definition, enabled: false }
+      : definition,
+  );
+}
+
+export function isWebsiteScanDisabled(requirementId: string): boolean {
+  return DISABLED_WEBSITE_SCAN_REQUIREMENT_IDS.has(requirementId);
+}
 
 export type RequirementDefinitionRow = {
   id: string;
@@ -74,23 +89,20 @@ export async function loadRequirementDefinitions(options?: {
   }
 
   const supabase = createServerSupabase();
-  let query = supabase
+  const { data, error } = await supabase
     .from("requirement_definitions")
     .select("*")
     .order("sort_order", { ascending: true });
 
-  if (enabledOnly) {
-    query = query.eq("enabled", true);
-  }
-
-  const { data, error } = await query;
   if (error) {
     throw new Error(
       `Failed to load requirement_definitions: ${error.message}. Run supabase/requirement_definitions.sql and requirement_definitions_seed.sql.`,
     );
   }
 
-  const items = ((data || []) as RequirementDefinitionRow[]).map(mapDefinitionRow);
+  const items = applyWebsiteScanDisabledOverrides(
+    ((data || []) as RequirementDefinitionRow[]).map(mapDefinitionRow),
+  );
   if (items.length === 0) {
     throw new Error(
       "requirement_definitions is empty. Run supabase/requirement_definitions_seed.sql in Supabase.",

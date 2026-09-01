@@ -8,7 +8,7 @@ import { scoreFromResults } from "@/lib/requirements-check/score";
 import { validatePublicWebsiteUrl } from "@/lib/requirements-check/ssrf";
 import { dedupeUrls, isCrawlableUrl, normalizeUrl, buildLandingUrlSet, buildAuthenticatedExploreExclusions, filterPlatformSeedUrls, isExcludedScanUrl, isPublicRouteUrl, isLikelyAuthenticatedPath } from "@/lib/requirements-check/url-utils";
 import { REQUIREMENT_DEFINITIONS, ENABLED_WEBSITE_SCAN_REQUIREMENT_COUNT } from "@/lib/requirements-check/registry/definitions";
-import { mapDefinitionRow } from "@/lib/requirements-check/registry/load-definitions";
+import { mapDefinitionRow, applyWebsiteScanDisabledOverrides } from "@/lib/requirements-check/registry/load-definitions";
 
 describe("requirements registry coverage", () => {
   it("maps all master checklist requirements from source extraction", () => {
@@ -18,6 +18,16 @@ describe("requirements registry coverage", () => {
     expect(report.total).toBe(120);
     expect(report.mapped).toBe(120);
     expect(report.unmapped).toBe(0);
+  });
+
+  it("applies code-level disabled overrides even when Supabase row is enabled", () => {
+    const items = applyWebsiteScanDisabledOverrides([
+      {
+        id: "company_representative_details_and_id",
+        enabled: true,
+      } as RequirementDefinition,
+    ]);
+    expect(items[0]?.enabled).toBe(false);
   });
 
   it("has no duplicate IDs in source registry", () => {
