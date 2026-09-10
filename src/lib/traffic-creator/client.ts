@@ -80,15 +80,15 @@ async function mapError(response: Response): Promise<TrafficCreatorError> {
   };
   let message = detail || fallback[response.status] || `Traffic Creator API error (HTTP ${response.status})`;
   if (response.status === 403) {
-    const outboundIp = await outboundIp();
-    if (outboundIp) {
-      message = `${message} This server's outbound IP is ${outboundIp}. Add it in Traffic Creator → Settings → Developer API.`;
+    const serverIp = await lookupOutboundIp();
+    if (serverIp) {
+      message = `${message} This server's outbound IP is ${serverIp}. Add it in Traffic Creator → Settings → Developer API.`;
     }
   }
   return new TrafficCreatorError(message, response.status, retryAfter);
 }
 
-async function outboundIp(): Promise<string | null> {
+async function lookupOutboundIp(): Promise<string | null> {
   try {
     const response = await fetch("https://api.ipify.org", { cache: "no-store" });
     if (!response.ok) return null;
