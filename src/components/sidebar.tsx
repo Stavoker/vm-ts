@@ -10,6 +10,7 @@ import {
   CircleOff,
   CreditCard,
   Globe,
+  LogOut,
   Plus,
   Send,
   ShieldCheck,
@@ -138,10 +139,23 @@ export function Sidebar({
         <div className="border-t border-[var(--border)] px-4 py-4 text-[11px] leading-relaxed text-[var(--muted)]">
           <div>Обновление данных: каждые 10 мин</div>
           <div className="mt-1 tabular-nums">Следующее через {nextRefreshLabel}</div>
+          <button
+            type="button"
+            className="mt-3 inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--muted)] hover:text-[var(--text)]"
+            onClick={() => void logout()}
+          >
+            <LogOut size={13} />
+            Выйти
+          </button>
         </div>
       </aside>
     </>
   );
+}
+
+async function logout() {
+  await fetch("/api/auth/logout", { method: "POST" });
+  window.location.href = "/login";
 }
 
 function NavButton({

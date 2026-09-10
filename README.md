@@ -21,7 +21,7 @@ npm install
 npm run dev
 ```
 
-Відкрий [http://localhost:3000](http://localhost:3000).
+Відкрий [http://localhost:3000](http://localhost:3000). Спочатку з’явиться форма входу — логін і пароль беруться з `ADMIN_EMAIL` / `ADMIN_PASSWORD`. На Render додай ті самі змінні плюс `AUTH_SECRET`.
 
 ## Можливості
 
@@ -72,6 +72,15 @@ Property ID: GA4 Admin → Property Settings → Property ID.
 ## Traffic Creator
 
 1. Settings → Developer API → створи named key.
-2. Додай `TRAFFIC_CREATOR_API_KEY` у `.env.local`.
-3. Якщо в акаунті увімкнені IP restrictions — додай outbound IP сервера.
-4. Перезапусти `npm run dev` і відкрий **Traffic Creator** у сайдбарі.
+2. Додай `TRAFFIC_CREATOR_API_KEY` у `.env.local` і в Render Environment.
+3. Якщо в акаунті увімкнені IP restrictions — додай outbound IP сервера (для Render це не той IP, що локально). Після 403 панель покаже IP, який треба allowlist.
+4. Перезапусти `npm run dev` або задеплой і відкрий **Traffic Creator** у сайдбарі.
+
+## Вхід в адмінку
+
+Панель відкривається лише після логіна.
+
+1. Додай `ADMIN_EMAIL`, `ADMIN_PASSWORD` і `AUTH_SECRET` у `.env.local`.
+2. Той самий набір змінних потрібен у Render → Environment, інакше прод лишиться без входу або не пустить нікого.
+3. `AUTH_SECRET` згенеруй так: `openssl rand -base64 32`.
+4. Сесія живе 7 днів у httpOnly cookie. Вийти можна кнопкою **Выйти** внизу сайдбару.

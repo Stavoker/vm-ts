@@ -62,6 +62,10 @@ export function Dashboard() {
     setError(null);
     try {
       const response = await fetch("/api/sites");
+      if (response.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Не удалось загрузить");
       setSites(data.sites as Site[]);

@@ -78,11 +78,25 @@ async function mapError(response: Response): Promise<TrafficCreatorError> {
     429: "Traffic Creator rate limit reached. Try again shortly.",
     503: "Traffic Creator is temporarily unavailable.",
   };
-  return new TrafficCreatorError(
-    detail || fallback[response.status] || `Traffic Creator API error (HTTP ${response.status})`,
-    response.status,
-    retryAfter,
-  );
+  let message = detail || fallback[response.status] || `Traffic Creator API error (HTTP ${response.status})`;
+  if (response.status === 403) {
+    const outboundIp = await outboundIp();
+    if (outboundIp) {
+      message = `${message} This server's outbound IP is ${outboundIp}. Add it in Traffic Creator → Settings → Developer API.`;
+    }
+  }
+  return new TrafficCreatorError(message, response.status, retryAfter);
+}
+
+async function outboundIp(): Promise<string | null> {
+  try {
+    const response = await fetch("https://api.ipify.org", { cache: "no-store" });
+    if (!response.ok) return null;
+    const ip = (await response.text()).trim();
+    return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip) ? ip : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function getTrafficBalance(): Promise<TrafficBalance> {
