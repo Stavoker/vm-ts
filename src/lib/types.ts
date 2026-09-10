@@ -19,6 +19,9 @@ export type Site = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  ga4_property_id?: string | null;
+  ga4_measurement_id?: string | null;
+  ga4_enabled?: boolean;
 };
 
 export type SiteCheck = {

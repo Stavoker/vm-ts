@@ -20,12 +20,13 @@ export async function register() {
     return;
   }
 
-  const { CHECK_INTERVAL_MS, REMINDER_INTERVAL_MS } = await import(
+  const { CHECK_INTERVAL_MS, REMINDER_INTERVAL_MS, WEEKLY_REPORT_INTERVAL_MS } = await import(
     "./src/lib/constants"
   );
   const { runSiteChecks } = await import("./src/lib/check-sites");
   const { pollTelegramUpdates } = await import("./src/lib/telegram");
   const { runPaymentReminders } = await import("./src/lib/reminders");
+  const { generateScheduledWeeklyReports } = await import("./src/lib/analytics/weekly-reports");
 
   let checking = false;
   let telegramOffset = 0;
@@ -115,7 +116,25 @@ export async function register() {
     void tickReminders("hourly");
   }, REMINDER_INTERVAL_MS);
 
+  async function tickWeeklyReports(reason: string) {
+    try {
+      console.log(`[analytics] weekly reports started (${reason})`);
+      const summary = await generateScheduledWeeklyReports();
+      console.log("[analytics] weekly reports done:", summary);
+    } catch (error) {
+      console.error("[analytics] weekly reports failed:", error);
+    }
+  }
+
+  setTimeout(() => {
+    void tickWeeklyReports("startup");
+  }, 40_000);
+  setInterval(() => {
+    void tickWeeklyReports("hourly");
+  }, WEEKLY_REPORT_INTERVAL_MS);
+
   console.log("[monitor] auto-check enabled: every 10 minutes");
   console.log("[telegram] /start listener enabled: every 2 seconds");
   console.log("[reminders] Notion payments: hourly, 7 days before due date");
+  console.log("[analytics] weekly PDF reports: Monday 08:00 app timezone");
 }

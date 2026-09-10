@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Button, Card, CardHeader, EmptyState, Field, Input, LoadingState, Select } from "@/components/ui/primitives";
+import { Pagination, usePagedList } from "@/components/ui/pagination";
 import { readJsonResponse } from "@/lib/fetch-json";
 import type {
   RequirementCheckSession,
@@ -172,7 +174,10 @@ export function RequirementsCheckPanel() {
   }, [loadSessions]);
 
   useEffect(() => {
-    void loadSessions();
+    const timer = setTimeout(() => {
+      void loadSessions();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [loadSessions]);
 
   useEffect(() => {
@@ -248,6 +253,7 @@ export function RequirementsCheckPanel() {
     try {
       const response = await fetch(`/api/requirements-check/${id}`, { method: "DELETE" });
       const data = await readJsonResponse<{ ok?: boolean; error?: string }>(response);
+      if (!response.ok) throw new Error(data.error || "Delete failed");
       if (activeId === id) {
         setActiveId(null);
         setActiveSession(null);
@@ -296,90 +302,89 @@ export function RequirementsCheckPanel() {
     return [...map.entries()];
   }, [visibleResults]);
 
+  const {
+    page: historyPage,
+    setPage: setHistoryPage,
+    totalPages: historyPages,
+    slice: historySlice,
+    total: historyTotal,
+  } = usePagedList(sessions);
+
   return (
     <div className="space-y-6">
-      <section className="rounded border border-[var(--border)] bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-gray-900">Requirements Check</h2>
+      <Card>
+        <CardHeader title="Requirements Check" />
         <div className="grid gap-3 md:grid-cols-2">
-          <label className="block text-sm">
-            <span className="mb-1 block text-gray-600">Website URL</span>
-            <input
+          <Field label="Website URL">
+            <Input
               value={websiteUrl}
               onChange={(e) => setWebsiteUrl(e.target.value)}
               placeholder="https://example.com"
-              className="w-full border border-[var(--border)] px-3 py-2 text-sm"
             />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-gray-600">Login page URL (optional)</span>
-            <input
+          </Field>
+          <Field label="Login page URL (optional)">
+            <Input
               value={loginPageUrl}
               onChange={(e) => setLoginPageUrl(e.target.value)}
               placeholder="https://example.com/login"
-              className="w-full border border-[var(--border)] px-3 py-2 text-sm"
             />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-gray-600">Login / Email (optional)</span>
-            <input
+          </Field>
+          <Field label="Login / Email (optional)">
+            <Input
               value={login}
               onChange={(e) => setLogin(e.target.value)}
-              className="w-full border border-[var(--border)] px-3 py-2 text-sm"
             />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-gray-600">Password (optional)</span>
-            <input
+          </Field>
+          <Field label="Password (optional)">
+            <Input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-[var(--border)] px-3 py-2 text-sm"
             />
-          </label>
+          </Field>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <button
+          <Button
             type="button"
             disabled={submitting || !websiteUrl.trim()}
             onClick={() => void startScan()}
-            className="h-8 bg-gray-900 px-3 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60"
           >
             {submitting ? "Запуск…" : "Check website"}
-          </button>
+          </Button>
           {activeId && activeSession && !["completed", "failed", "cancelled"].includes(activeSession.status) ? (
             <>
-              <button type="button" onClick={() => void cancelScan()} className="h-8 border px-3 text-sm">
+              <Button type="button" variant="secondary" onClick={() => void cancelScan()}>
                 Cancel check
-              </button>
+              </Button>
               {activeSession.status === "paused_for_user" ? (
-                <button type="button" onClick={() => void resumeScan()} className="h-8 border px-3 text-sm">
+                <Button type="button" variant="secondary" onClick={() => void resumeScan()}>
                   Continue
-                </button>
+                </Button>
               ) : null}
             </>
           ) : null}
           {activeId ? (
             <a
               href={`/api/requirements-check/${activeId}/pdf`}
-              className="inline-flex h-8 items-center border px-3 text-sm hover:bg-gray-50"
+              className="ui-btn ui-btn-secondary"
             >
               Download PDF
             </a>
           ) : null}
         </div>
-      </section>
+      </Card>
 
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {error ? <Alert>{error}</Alert> : null}
 
       {activeSession ? (
         <section className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-          <div className="rounded border border-[var(--border)] bg-white p-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <Card>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <div>
-                <div className="text-sm font-semibold">{activeSession.hostname}</div>
-                <div className="text-xs text-gray-500">{activeSession.website_url}</div>
+                <div className="text-[15px] font-semibold tracking-tight">{activeSession.hostname}</div>
+                <div className="text-xs text-[var(--muted)]">{activeSession.website_url}</div>
               </div>
-              <div className="text-right text-xs text-gray-600">
+              <div className="text-right text-xs text-[var(--muted)]">
                 <div>Status: {activeSession.status}</div>
                 <div>Progress: {activeSession.progress_percent}%</div>
               </div>
@@ -396,55 +401,59 @@ export function RequirementsCheckPanel() {
               <Metric label="FAIL" value={String(activeSession.failed_requirements)} />
             </div>
             {activeSession.current_page ? (
-              <p className="mt-3 text-xs text-gray-600">
+              <p className="mt-3 text-xs text-[var(--muted)]">
                 Current page: {activeSession.current_page}
                 {activeSession.current_action ? ` · ${activeSession.current_action}` : ""}
               </p>
             ) : null}
             {activeSession.pause_reason ? (
-              <p className="mt-2 text-sm text-yellow-700">{activeSession.pause_reason}</p>
+              <Alert tone="warn" className="mt-3">{activeSession.pause_reason}</Alert>
             ) : null}
-          </div>
+          </Card>
 
-          <div className="rounded border border-[var(--border)] bg-white p-4">
-            <h3 className="mb-2 text-sm font-semibold">Live Browser</h3>
+          <Card>
+            <h3 className="mb-3 text-[15px] font-semibold tracking-tight">Live Browser</h3>
             {liveScreenshot ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={liveScreenshot} alt="Live browser" className="max-h-72 w-full border object-contain" />
+              <img src={liveScreenshot} alt="Live browser" className="max-h-72 w-full rounded-[14px] border border-[var(--border)] object-contain" />
             ) : (
-              <div className="flex h-48 items-center justify-center border text-xs text-gray-500">
+              <div className="flex h-48 items-center justify-center rounded-[14px] border border-[var(--border)] bg-[var(--surface-muted)] text-xs text-[var(--muted)]">
                 Waiting for browser stream…
               </div>
             )}
-          </div>
+          </Card>
         </section>
       ) : null}
 
       {activeSession ? (
-        <section className="rounded border border-[var(--border)] bg-white p-4">
-          <div className="mb-3 flex flex-wrap gap-2 text-xs">
-            {(["all", "PASS", "MANUAL", "FAIL"] as const).map((id) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setFilter(id)}
-                className={`rounded px-2 py-1 ${filter === id ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700"}`}
-              >
-                {id === "all" ? "All" : id === "MANUAL" ? "Manual Review" : id}
-              </button>
-            ))}
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="rounded border px-2 py-1"
-            >
-              <option value="all">All categories</option>
-              {categories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
+        <Card>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <div className="ui-seg">
+              {(["all", "PASS", "MANUAL", "FAIL"] as const).map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setFilter(id)}
+                  data-active={filter === id}
+                  className="ui-seg-btn"
+                >
+                  {id === "all" ? "All" : id === "MANUAL" ? "Manual Review" : id}
+                </button>
               ))}
-            </select>
+            </div>
+            <div className="w-[220px]">
+              <Select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+              >
+                <option value="all">All categories</option>
+                {categories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </Select>
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -455,14 +464,14 @@ export function RequirementsCheckPanel() {
               return (
                 <div key={key}>
                   <div className="mb-2 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold uppercase text-gray-700">
+                    <h3 className="text-sm font-semibold uppercase tracking-[0.04em] text-[var(--muted)]">
                       {category} / {subCategory}
                     </h3>
-                    <span className="text-xs text-gray-500">{sectionScore}%</span>
+                    <span className="text-xs text-[var(--muted)]">{sectionScore}%</span>
                   </div>
-                  <div className="divide-y border border-[var(--border)]">
+                  <div className="overflow-hidden rounded-[14px] border border-[var(--border)]">
                     {rows.map((row) => (
-                      <div key={row.id} className="bg-white px-3 py-2">
+                      <div key={row.id} className="border-t border-[var(--border)] bg-white px-4 py-3 first:border-0">
                         <button
                           type="button"
                           className="flex w-full items-start gap-2 text-left"
@@ -472,13 +481,13 @@ export function RequirementsCheckPanel() {
                         >
                           <span className={`mt-1 h-2.5 w-2.5 rounded-full ${STATUS_DOT[row.status]}`} />
                           <span className="flex-1 text-sm">{row.requirement_name}</span>
-                          <span className="text-xs text-gray-500">{row.status}</span>
+                          <span className="text-xs text-[var(--muted)]">{row.status}</span>
                         </button>
                         {row.explanation ? (
-                          <p className="mt-1 line-clamp-3 pl-5 text-xs text-gray-500">{row.explanation}</p>
+                          <p className="mt-1 line-clamp-3 pl-5 text-xs text-[var(--muted)]">{row.explanation}</p>
                         ) : null}
                         {expandedId === row.id ? (
-                          <div className="mt-2 space-y-1 pl-5 text-xs text-gray-600">
+                          <div className="mt-2 space-y-1 pl-5 text-xs text-[var(--muted)]">
                             <p>{row.explanation}</p>
                             {(row.checked_url || row.checkedUrl) ? (
                               <p>Checked URL: {row.checked_url || row.checkedUrl}</p>
@@ -498,79 +507,76 @@ export function RequirementsCheckPanel() {
               );
             })}
           </div>
-        </section>
+        </Card>
       ) : null}
 
-      <section className="rounded border border-[var(--border)] bg-white p-4">
-        <h3 className="mb-3 text-sm font-semibold">Audit history</h3>
+      <Card>
+        <CardHeader title="Audit history" />
         {loading ? (
-          <p className="text-sm text-gray-500">Загрузка…</p>
+          <LoadingState />
         ) : sessions.length === 0 ? (
-          <p className="text-sm text-gray-500">No scans yet.</p>
+          <EmptyState title="No scans yet." hint="Start a check to see audit history here." />
         ) : (
           <div className="space-y-2">
-            {sessions.map((session) => (
+            {historySlice.map((session) => (
               <div
                 key={session.id}
-                className="flex flex-wrap items-center justify-between gap-2 border border-[var(--border)] px-3 py-2 text-sm"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-[14px] border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm"
               >
                 <div>
                   <div className="font-medium">{session.hostname}</div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-[var(--muted)]">
                     {new Date(session.created_at).toLocaleString()} · {session.status}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold">{session.overall_score ?? "—"}%</span>
-                  <button
-                    type="button"
-                    className="text-xs text-gray-700 hover:underline"
-                    onClick={() => setActiveId(session.id)}
-                  >
+                  <Button type="button" variant="ghost" onClick={() => setActiveId(session.id)}>
                     View report
-                  </button>
+                  </Button>
                   <a
                     href={`/api/requirements-check/${session.id}/pdf`}
-                    className="text-xs text-gray-700 hover:underline"
+                    className="ui-btn ui-btn-ghost"
                   >
                     PDF
                   </a>
-                  <button
+                  <Button
                     type="button"
-                    className="text-xs text-red-600 hover:underline"
+                    variant="danger"
                     onClick={() => void deleteScan(session.id)}
                   >
                     Delete
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}
           </div>
         )}
-      </section>
+        <Pagination page={historyPage} totalPages={historyPages} total={historyTotal} onPage={setHistoryPage} />
+      </Card>
 
       {activeSession && events.length > 0 ? (
-        <section className="rounded border border-[var(--border)] bg-white p-4">
-          <h3 className="mb-2 text-sm font-semibold">Activity log</h3>
-          <div className="max-h-72 overflow-y-auto font-mono text-[11px] leading-5 text-gray-600">
+        <Card>
+          <CardHeader title="Activity log" />
+          <div className="max-h-72 overflow-y-auto rounded-[14px] bg-[var(--surface-muted)] px-4 py-2 font-mono text-[11px] leading-5 text-[var(--muted)]">
             {events.slice(-120).map((event, index) => (
               <div
                 key={`${scanEventKey(event)}-${index}`}
-                className="border-b border-gray-50 py-1 last:border-0"
+                className="border-b border-[var(--border)] py-1.5 last:border-0"
               >
-                <span className="text-gray-400">{new Date(event.created_at).toLocaleTimeString()}</span>
+                <span className="text-[var(--muted)]">{new Date(event.created_at).toLocaleTimeString()}</span>
                 {" · "}
-                <span className="uppercase tracking-wide text-[10px] text-gray-400">
+                <span className="uppercase tracking-wide text-[10px] text-[var(--muted)]">
                   {activityEventLabel(event.event_type)}
                 </span>
                 {" · "}
-                <span className={ACTIVITY_EVENT_STYLE[event.event_type] || "text-gray-700"}>
+                <span className={ACTIVITY_EVENT_STYLE[event.event_type] || "text-[var(--text)]"}>
                   {event.message}
                 </span>
               </div>
             ))}
           </div>
-        </section>
+        </Card>
       ) : null}
     </div>
   );
@@ -578,9 +584,9 @@ export function RequirementsCheckPanel() {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded border border-[var(--border)] px-3 py-2">
-      <div className="text-[11px] uppercase tracking-wide text-gray-500">{label}</div>
-      <div className="text-sm font-semibold text-gray-900">{value}</div>
+    <div className="rounded-[14px] border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--muted)]">{label}</div>
+      <div className="text-sm font-semibold text-[var(--text)]">{value}</div>
     </div>
   );
 }

@@ -3,7 +3,7 @@ export function normalizeUrl(raw: string, base?: string): string | null {
     const url = new URL(raw, base);
     if (!["http:", "https:"].includes(url.protocol)) return null;
     url.hash = "";
-    let pathname = url.pathname.replace(/\/+$/, "") || "/";
+    const pathname = url.pathname.replace(/\/+$/, "") || "/";
     url.pathname = pathname;
     return url.toString();
   } catch {

@@ -31,6 +31,9 @@ create table if not exists public.sites (
   last_online_at timestamptz,
   notes text,
   is_active boolean not null default true,
+  ga4_property_id text,
+  ga4_measurement_id text,
+  ga4_enabled boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -151,4 +154,41 @@ alter table public.payment_reminders enable row level security;
 
 drop policy if exists "payment_reminders_all" on public.payment_reminders;
 create policy "payment_reminders_all" on public.payment_reminders
+  for all using (true) with check (true);
+
+alter table public.sites
+  add column if not exists ga4_property_id text,
+  add column if not exists ga4_measurement_id text,
+  add column if not exists ga4_enabled boolean not null default false;
+
+create table if not exists public.analytics_reports (
+  id uuid primary key default gen_random_uuid(),
+  site_id uuid not null references public.sites (id) on delete cascade,
+  report_type text not null default 'weekly',
+  period_start date not null,
+  period_end date not null,
+  file_name text,
+  pdf_base64 text,
+  generated_at timestamptz,
+  generated_by text,
+  status text not null default 'pending',
+  error_message text,
+  metadata_json jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (site_id, period_start, period_end, report_type)
+);
+
+create index if not exists analytics_reports_site_generated_idx
+  on public.analytics_reports (site_id, generated_at desc);
+
+drop trigger if exists analytics_reports_set_updated_at on public.analytics_reports;
+create trigger analytics_reports_set_updated_at
+before update on public.analytics_reports
+for each row execute function public.set_updated_at();
+
+alter table public.analytics_reports enable row level security;
+
+drop policy if exists "analytics_reports_all" on public.analytics_reports;
+create policy "analytics_reports_all" on public.analytics_reports
   for all using (true) with check (true);

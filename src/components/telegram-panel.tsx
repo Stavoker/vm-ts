@@ -1,6 +1,9 @@
 "use client";
 
+import { Send } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { Alert, Button, Card, CardHeader, EmptyState, Field, Input } from "@/components/ui/primitives";
+import { Pagination, usePagedList } from "@/components/ui/pagination";
 
 type Chat = {
   chat_id: string;
@@ -28,11 +31,16 @@ export function TelegramPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    const timer = setTimeout(() => {
+      void load();
+    }, 0);
     const id = setInterval(() => {
       void load();
     }, 5000);
-    return () => clearInterval(id);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(id);
+    };
   }, [load]);
 
   async function onSubmit(event: FormEvent) {
@@ -58,64 +66,55 @@ export function TelegramPanel() {
     }
   }
 
+  const { page, setPage, totalPages, slice, total } = usePagedList(chats);
+
   return (
-    <div className="max-w-xl space-y-6">
-      <div className="space-y-2 text-sm text-gray-600">
-        <p>
-          Пока запущен <code>npm run dev</code>, бот отвечает на{" "}
-          <b>/start</b> сразу (проверка каждые 2 сек), отдельно от проверки
-          сайтов.
+    <div className="max-w-xl space-y-5">
+      <Card>
+        <p className="text-sm leading-relaxed text-[var(--muted)]">
+          Пока запущен <code>npm run dev</code>, бот отвечает на <b>/start</b> сразу (проверка каждые 2 сек), отдельно от
+          проверки сайтов.
         </p>
-        <p>
-          Нажми <b>/start</b> в боте — ответ должен прийти за пару секунд, без
-          ожидания обновления статусов сайтов.
+        <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
+          Нажми <b>/start</b> в боте — ответ должен прийти за пару секунд, без ожидания обновления статусов сайтов.
         </p>
-      </div>
+      </Card>
 
-      <form onSubmit={onSubmit} className="space-y-3">
-        <label className="block space-y-1.5">
-          <span className="text-sm text-gray-700">Добавить Chat ID вручную</span>
-          <input
-            value={chatId}
-            onChange={(e) => setChatId(e.target.value)}
-            placeholder="например 123456789"
-            className="h-9 w-full border border-[var(--border)] bg-white px-3 text-sm outline-none focus:border-gray-400"
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={loading || !chatId.trim()}
-          className="h-9 bg-gray-900 px-4 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60"
-        >
-          {loading ? "Сохраняю…" : "Сохранить и отправить тест"}
-        </button>
-      </form>
+      <Card>
+        <form onSubmit={onSubmit} className="space-y-4">
+          <Field label="Добавить Chat ID вручную">
+            <Input value={chatId} onChange={(e) => setChatId(e.target.value)} placeholder="например 123456789" />
+          </Field>
+          <Button type="submit" disabled={loading || !chatId.trim()} className="mt-4">
+            {loading ? "Сохраняю…" : "Сохранить и отправить тест"}
+          </Button>
+        </form>
+      </Card>
 
-      {status ? <p className="text-sm text-green-700">{status}</p> : null}
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {status ? <Alert tone="ok">{status}</Alert> : null}
+      {error ? <Alert>{error}</Alert> : null}
 
-      <div>
-        <h3 className="mb-2 text-sm font-semibold text-gray-800">
-          Подключённые чаты ({chats.length})
-        </h3>
+      <Card pad={false}>
+        <div className="ui-card-pad pb-2">
+          <CardHeader title={`Подключённые чаты (${chats.length})`} icon={<Send size={16} />} />
+        </div>
         {chats.length === 0 ? (
-          <p className="text-sm text-gray-500">Пока пусто</p>
+          <EmptyState title="Пока пусто" hint="Нажмите /start в боте или добавьте Chat ID вручную." />
         ) : (
-          <ul className="divide-y border border-[var(--border)] bg-white">
-            {chats.map((chat) => (
-              <li key={chat.chat_id} className="px-3 py-2 text-sm">
-                <div className="font-medium text-gray-900">
+          <ul>
+            {slice.map((chat) => (
+              <li key={chat.chat_id} className="border-t border-[var(--border)] px-5 py-3 text-sm">
+                <div className="font-medium text-[var(--text)]">
                   {chat.first_name || "Без имени"}
-                  {chat.username ? (
-                    <span className="text-gray-500"> @{chat.username}</span>
-                  ) : null}
+                  {chat.username ? <span className="text-[var(--muted)]"> @{chat.username}</span> : null}
                 </div>
-                <div className="text-xs text-gray-500">{chat.chat_id}</div>
+                <div className="text-xs text-[var(--muted)]">{chat.chat_id}</div>
               </li>
             ))}
           </ul>
         )}
-      </div>
+        <Pagination page={page} totalPages={totalPages} total={total} onPage={setPage} />
+      </Card>
     </div>
   );
 }

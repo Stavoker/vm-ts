@@ -1,11 +1,5 @@
 import type { Metadata } from "next";
-import { Source_Sans_3 } from "next/font/google";
 import "./globals.css";
-
-const body = Source_Sans_3({
-  variable: "--font-body",
-  subsets: ["latin", "latin-ext"],
-});
 
 export const metadata: Metadata = {
   title: "Vitrina Monitor",
@@ -18,7 +12,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru" className={`${body.variable} h-full`}>
+    <html lang="ru" className="h-full">
       <body className="h-full overflow-hidden antialiased">{children}</body>
     </html>
   );

@@ -1,12 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Menu } from "lucide-react";
 import { AddSiteForm } from "@/components/add-site-form";
+import { TrafficAnalyticsPanel } from "@/components/analytics/traffic-analytics-panel";
 import { Sidebar, type NavView } from "@/components/sidebar";
 import { SitesTable } from "@/components/sites-table";
 import { PaymentsPanel } from "@/components/payments-panel";
 import { RequirementsCheckPanel } from "@/components/requirements-check-panel";
 import { TelegramPanel } from "@/components/telegram-panel";
+import { TrafficCreatorPanel } from "@/components/traffic-creator-panel";
+import { Alert, Button, LoadingState } from "@/components/ui/primitives";
 import { CHECK_INTERVAL_MS } from "@/lib/constants";
 import type { Site, SiteStatus } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
@@ -29,6 +33,16 @@ function formatCountdown(ms: number) {
   const sec = totalSec % 60;
   return `${min}:${sec.toString().padStart(2, "0")}`;
 }
+
+const PAGE_SUBTITLE: Partial<Record<NavView, string>> = {
+  sites: "Мониторинг сайтов, статусы и быстрые действия",
+  add: "Добавьте сайт в мониторинг и при необходимости подключите GA4",
+  telegram: "Чаты для уведомлений о статусах",
+  payments: "Напоминания об оплатах из Notion",
+  requirements: "Автоматическая проверка требований сайта",
+  analytics: "Трафик, источники и поведение пользователей",
+  traffic: "Баланс и кампании Traffic Creator",
+};
 
 export function Dashboard() {
   const [sites, setSites] = useState<Site[]>([]);
@@ -85,7 +99,10 @@ export function Dashboard() {
   }, [refreshSites]);
 
   useEffect(() => {
-    void refreshSites();
+    const timer = setTimeout(() => {
+      void refreshSites();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [refreshSites]);
 
   useEffect(() => {
@@ -125,7 +142,15 @@ export function Dashboard() {
   }, [sites]);
 
   const visibleSites = useMemo(() => {
-    if (view === "sites" || view === "add" || view === "telegram" || view === "payments" || view === "requirements") {
+    if (
+      view === "sites" ||
+      view === "add" ||
+      view === "telegram" ||
+      view === "payments" ||
+      view === "requirements" ||
+      view === "analytics" ||
+      view === "traffic"
+    ) {
       return sites;
     }
     return sites.filter((site) => site.status === view);
@@ -140,9 +165,15 @@ export function Dashboard() {
           ? "Оплаты Notion"
           : view === "requirements"
             ? "Requirements Check"
+            : view === "analytics"
+              ? "Traffic Analytics"
+              : view === "traffic"
+                ? "Traffic Creator"
             : view === "sites"
             ? "Все сайты"
             : STATUS_LABELS[view];
+
+  const subtitle = PAGE_SUBTITLE[view] || (isStatusView(view) ? "Сайты с выбранным статусом" : undefined);
 
   const countdown = formatCountdown(nextRefreshAt - now);
   const lastCheckLabel = lastCheckAt
@@ -152,6 +183,8 @@ export function Dashboard() {
         second: "2-digit",
       }).format(new Date(lastCheckAt))
     : null;
+
+  const showCheck = view !== "add" && view !== "telegram" && view !== "payments" && view !== "requirements" && view !== "analytics" && view !== "traffic";
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -164,42 +197,49 @@ export function Dashboard() {
         nextRefreshLabel={checking ? "сейчас…" : countdown}
       />
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:ml-64">
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-[var(--border)] bg-white px-4 lg:px-6">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              className="text-sm text-gray-700 lg:hidden"
-              onClick={() => setMobileOpen(true)}
-            >
-              Меню
-            </button>
-            <h1 className="text-base font-semibold text-gray-900">{title}</h1>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:ml-[272px]">
+        <header className="ui-header flex shrink-0 items-center justify-between px-4 lg:px-8">
+          <div className="min-w-0">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[var(--text)] hover:bg-black/[0.05] lg:hidden"
+                onClick={() => setMobileOpen(true)}
+                aria-label="Меню"
+              >
+                <Menu size={18} />
+              </button>
+              <div className="min-w-0">
+                <h1 className="truncate text-[20px] font-semibold tracking-tight text-[var(--text)]">{title}</h1>
+                {subtitle ? (
+                  <p className="hidden truncate text-[12px] text-[var(--muted)] sm:block">{subtitle}</p>
+                ) : null}
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="hidden text-xs text-gray-500 sm:inline">
+            <span className="hidden text-xs text-[var(--muted)] sm:inline">
               {checking
                 ? "Идёт проверка…"
                 : lastCheckLabel
                   ? `Последняя проверка: ${lastCheckLabel} · обновление через ${countdown}`
                   : `Обновление данных через ${countdown}`}
             </span>
-            {view !== "add" && view !== "telegram" && view !== "payments" && view !== "requirements" ? (
-              <button
+            {showCheck ? (
+              <Button
                 type="button"
                 onClick={() => void checkAll()}
                 disabled={checking || loading}
-                className="h-8 bg-gray-900 px-3 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60"
               >
                 {checking ? "Проверяю…" : "Проверить сейчас"}
-              </button>
+              </Button>
             ) : null}
           </div>
         </header>
 
-        <main className="min-h-0 flex-1 overflow-y-auto bg-[var(--bg)] p-4 lg:p-6">
-          {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
+        <main className="min-h-0 flex-1 overflow-y-auto p-4 lg:p-8">
+          {error ? <Alert className="mb-4">{error}</Alert> : null}
 
           {view === "add" ? (
             <AddSiteForm
@@ -214,8 +254,12 @@ export function Dashboard() {
             <PaymentsPanel />
           ) : view === "requirements" ? (
             <RequirementsCheckPanel />
+          ) : view === "analytics" ? (
+            <TrafficAnalyticsPanel sites={sites} />
+          ) : view === "traffic" ? (
+            <TrafficCreatorPanel />
           ) : loading ? (
-            <p className="text-sm text-gray-500">Загрузка…</p>
+            <LoadingState />
           ) : (
             <SitesTable sites={visibleSites} onChanged={() => void refreshSites()} />
           )}
@@ -225,8 +269,10 @@ export function Dashboard() {
           view !== "telegram" &&
           view !== "payments" &&
           view !== "requirements" &&
+          view !== "analytics" &&
+          view !== "traffic" &&
           isStatusView(view) ? (
-            <p className="mt-3 text-xs text-gray-500">
+            <p className="mt-4 text-xs text-[var(--muted)]">
               Показано {visibleSites.length} из {sites.length}
             </p>
           ) : null}

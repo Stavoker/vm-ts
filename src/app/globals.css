@@ -1,13 +1,39 @@
 @import "tailwindcss";
 
 :root {
-  --sidebar: #111827;
-  --sidebar-text: #d1d5db;
-  --sidebar-active: #ffffff;
-  --bg: #f3f4f6;
-  --border: #e5e7eb;
-  --text: #111827;
-  --muted: #6b7280;
+  --bg: #f5f5f7;
+  --bg-subtle: #eef0f4;
+  --surface: #ffffff;
+  --surface-muted: #fbfbfd;
+  --sidebar: rgba(255, 255, 255, 0.82);
+  --sidebar-text: #3a3a3c;
+  --sidebar-active: #0071e3;
+  --text: #1d1d1f;
+  --muted: #6e6e73;
+  --border: rgba(60, 60, 67, 0.12);
+  --border-strong: rgba(60, 60, 67, 0.18);
+  --accent: #0071e3;
+  --accent-soft: rgba(0, 113, 227, 0.1);
+  --success: #248a3d;
+  --success-soft: rgba(48, 209, 88, 0.14);
+  --warning: #9a6700;
+  --warning-soft: rgba(255, 159, 10, 0.16);
+  --danger: #d70015;
+  --danger-soft: rgba(255, 59, 48, 0.12);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 10px 28px rgba(0, 0, 0, 0.06);
+  --shadow-hover: 0 4px 18px rgba(0, 0, 0, 0.08);
+  --radius: 18px;
+  --radius-sm: 12px;
+  --radius-xs: 10px;
+  --control-h: 36px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  --header-h: 64px;
 }
 
 @theme inline {
@@ -16,11 +42,275 @@
   --font-sans: var(--font-body);
 }
 
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
 body {
   height: 100%;
   overflow: hidden;
   margin: 0;
   color: var(--text);
-  background: var(--bg);
-  font-family: var(--font-body), system-ui, sans-serif;
+  background:
+    radial-gradient(1200px 500px at 12% -10%, rgba(0, 113, 227, 0.06), transparent 50%),
+    radial-gradient(900px 400px at 100% 0%, rgba(255, 255, 255, 0.8), transparent 42%),
+    var(--bg);
+  font-family: var(--font-body), -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  letter-spacing: -0.01em;
+}
+
+.ui-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.ui-card-pad {
+  padding: 18px;
+}
+
+.ui-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.ui-input,
+.ui-select {
+  height: var(--control-h);
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: rgba(255, 255, 255, 0.92);
+  padding: 0 12px;
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.ui-input:focus,
+.ui-select:focus {
+  border-color: rgba(0, 113, 227, 0.55);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+.ui-btn {
+  display: inline-flex;
+  height: var(--control-h);
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.16s ease, background 0.16s ease, opacity 0.16s ease, box-shadow 0.16s ease;
+}
+
+.ui-btn:disabled {
+  opacity: 0.5;
+}
+
+.ui-btn:hover:not(:disabled) {
+  transform: translateY(-0.5px);
+}
+
+.ui-btn-primary {
+  border: 0;
+  background: var(--accent);
+  color: white;
+  box-shadow: 0 6px 16px rgba(0, 113, 227, 0.22);
+}
+
+.ui-btn-primary:hover:not(:disabled) {
+  background: #0077ed;
+}
+
+.ui-btn-secondary {
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--text);
+}
+
+.ui-btn-secondary:hover:not(:disabled) {
+  background: #f2f2f7;
+}
+
+.ui-btn-danger {
+  border: 1px solid transparent;
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.ui-btn-ghost {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  box-shadow: none;
+  height: 32px;
+  padding: 0 10px;
+}
+
+.ui-table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+  table-layout: auto;
+  text-align: left;
+  font-size: 14px;
+}
+
+.ui-table thead {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: #f8f8fa;
+}
+
+.ui-table th,
+.ui-table td {
+  padding: 13px 16px;
+  vertical-align: middle;
+}
+
+.ui-table th {
+  white-space: nowrap;
+}
+
+.ui-table tbody tr {
+  border-top: 1px solid var(--border);
+  transition: background 0.15s ease;
+}
+
+.ui-table tbody tr:hover {
+  background: rgba(0, 113, 227, 0.035);
+}
+
+.ui-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.ui-alert-error {
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--danger);
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.ui-alert-ok {
+  border-radius: var(--radius-sm);
+  background: var(--success-soft);
+  color: var(--success);
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.ui-alert-warn {
+  border-radius: var(--radius-sm);
+  background: var(--warning-soft);
+  color: var(--warning);
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.ui-page-btn {
+  display: inline-flex;
+  min-width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 8px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.ui-page-btn:hover:not(:disabled) {
+  background: #f2f2f7;
+}
+
+.ui-page-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.ui-page-btn[data-active="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.ui-table-wrap {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.ui-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  border-radius: 999px;
+  background: #f2f2f7;
+  padding: 3px;
+}
+
+.ui-seg-btn {
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.ui-seg-btn[data-active="true"] {
+  background: white;
+  color: var(--text);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.ui-header {
+  height: var(--header-h);
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: saturate(180%) blur(20px);
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--accent);
+}
+
+input[type="datetime-local"],
+input[type="date"],
+input[type="number"] {
+  font-family: inherit;
 }

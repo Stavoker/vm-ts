@@ -15,7 +15,9 @@
     "postinstall": "node scripts/install-playwright.mjs"
   },
   "dependencies": {
+    "@google-analytics/data": "^7.1.0",
     "@supabase/supabase-js": "^2.110.8",
+    "lucide-react": "^1.44.0",
     "next": "16.2.11",
     "pdfkit": "^0.17.2",
     "playwright": "^1.55.0",

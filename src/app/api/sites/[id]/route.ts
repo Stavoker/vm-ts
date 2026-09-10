@@ -12,6 +12,14 @@ const STATUSES: SiteStatus[] = [
 
 type Params = { params: Promise<{ id: string }> };
 
+function normalizeGa4PropertyId(raw: string | null | undefined): string | null {
+  const value = raw?.trim() || "";
+  if (!value) return null;
+  const match = value.match(/^(?:properties\/)?(\d+)$/);
+  if (!match) throw new Error("Invalid GA4 Property ID");
+  return match[1];
+}
+
 export async function PATCH(request: Request, { params }: Params) {
   try {
     const { id } = await params;
@@ -21,12 +29,22 @@ export async function PATCH(request: Request, { params }: Params) {
       is_active?: boolean;
       status?: SiteStatus;
       status_reason?: string | null;
+      ga4_property_id?: string | null;
+      ga4_measurement_id?: string | null;
+      ga4_enabled?: boolean;
     };
 
     const patch: Record<string, unknown> = {};
     if (typeof body.name === "string") patch.name = body.name.trim();
     if ("notes" in body) patch.notes = body.notes?.trim() || null;
     if (typeof body.is_active === "boolean") patch.is_active = body.is_active;
+    if ("ga4_property_id" in body) {
+      patch.ga4_property_id = normalizeGa4PropertyId(body.ga4_property_id);
+    }
+    if ("ga4_measurement_id" in body) {
+      patch.ga4_measurement_id = body.ga4_measurement_id?.trim() || null;
+    }
+    if (typeof body.ga4_enabled === "boolean") patch.ga4_enabled = body.ga4_enabled;
     if (body.status) {
       if (!STATUSES.includes(body.status)) {
         return NextResponse.json({ error: "Неверный статус" }, { status: 400 });
