@@ -2,6 +2,7 @@ import { readJsonResponse } from "@/lib/fetch-json";
 import { parseBalance, parseCampaign, parseCampaignList, type TrafficBalance, type TrafficCampaign } from "./parse";
 
 const DEFAULT_BASE = "https://traffic-creator.com/api/v1/account";
+const ACCOUNT_KEY_PREFIX = "tgp_account_";
 
 export class TrafficCreatorError extends Error {
   status: number;
@@ -15,8 +16,16 @@ export class TrafficCreatorError extends Error {
   }
 }
 
+export function sanitizeTrafficCreatorKey(raw: string | undefined | null): string {
+  return (raw || "")
+    .replace(/^\uFEFF/, "")
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .trim();
+}
+
 export function trafficCreatorApiKey(): string {
-  const key = process.env.TRAFFIC_CREATOR_API_KEY?.trim();
+  const key = sanitizeTrafficCreatorKey(process.env.TRAFFIC_CREATOR_API_KEY);
   if (!key) {
     throw new TrafficCreatorError(
       "Missing TRAFFIC_CREATOR_API_KEY. Create a named key in Traffic Creator → Settings → Developer API.",
@@ -24,6 +33,11 @@ export function trafficCreatorApiKey(): string {
     );
   }
   return key;
+}
+
+function keyFingerprint(key: string): string {
+  const prefix = key.startsWith(ACCOUNT_KEY_PREFIX) ? ACCOUNT_KEY_PREFIX : "other";
+  return `len=${key.length} prefix=${prefix}`;
 }
 
 function baseUrl(): string {
@@ -39,53 +53,88 @@ function retryAfterSeconds(response: Response): number | null {
 
 async function tcFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const key = trafficCreatorApiKey();
+  const url = `${baseUrl()}${path}`;
   const headers = new Headers(init.headers);
   headers.set("X-API-KEY", key);
   headers.set("Accept", "application/json");
+  headers.set("User-Agent", "VitrinaMonitor/1.0 (Traffic Creator Account API)");
   if (init.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`${baseUrl()}${path}`, {
+  const method = (init.method || "GET").toUpperCase();
+  const response = await fetch(url, {
     ...init,
+    method,
     headers,
     cache: "no-store",
+    redirect: "follow",
   });
 
   if (!response.ok) {
-    throw await mapError(response);
+    throw await mapError(response, method, url, key);
   }
   if (response.status === 204) return {} as T;
   return readJsonResponse<T>(response);
 }
 
-async function mapError(response: Response): Promise<TrafficCreatorError> {
+function snippet(raw: string, max = 400): string {
+  return raw.replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+async function mapError(
+  response: Response,
+  method: string,
+  requestUrl: string,
+  key: string,
+): Promise<TrafficCreatorError> {
   const retryAfter = retryAfterSeconds(response);
+  const raw = (await response.text()).trim();
+  const contentType = response.headers.get("content-type") || "";
+  const cfRay = response.headers.get("cf-ray") || "";
+  const server = response.headers.get("server") || "";
   let detail = "";
   try {
-    const body = await readJsonResponse<{ error?: string; message?: string; detail?: string }>(response);
+    const body = JSON.parse(raw) as { error?: string; message?: string; detail?: string };
     detail = body.error || body.message || body.detail || "";
   } catch {
-    detail = "";
+    detail = snippet(raw);
   }
+
+  console.warn("[traffic-creator] upstream error", {
+    method,
+    url: requestUrl,
+    status: response.status,
+    contentType,
+    server: server || undefined,
+    cfRay: cfRay || undefined,
+    apiKeyHeader: "X-API-KEY",
+    keyMeta: keyFingerprint(key),
+    body: snippet(raw, 500),
+  });
 
   const fallback: Record<number, string> = {
     401: "Traffic Creator API key is missing, invalid or revoked.",
-    403: "Traffic Creator access denied. Check account permissions or approved server IP.",
+    403: "Traffic Creator returned 403. The account API key was sent in X-API-KEY.",
     404: "Campaign not found in this Traffic Creator account.",
-    409: "Campaign settings version or state conflict. Refresh and retry.",
+    409: "Campaign settings version or campaign state conflict. Refresh and retry.",
     422: "Invalid Traffic Creator settings.",
     429: "Traffic Creator rate limit reached. Try again shortly.",
     503: "Traffic Creator is temporarily unavailable.",
   };
-  let message = detail || fallback[response.status] || `Traffic Creator API error (HTTP ${response.status})`;
+  const parts = [
+    fallback[response.status] || `Traffic Creator API error (HTTP ${response.status})`,
+    detail && detail !== fallback[response.status] ? `Upstream: ${detail}` : "",
+    `${method} ${requestUrl} → HTTP ${response.status}`,
+  ].filter(Boolean);
+
   if (response.status === 403) {
     const serverIp = await lookupOutboundIp();
-    if (serverIp) {
-      message = `${message} This server's outbound IP is ${serverIp}. Add it in Traffic Creator → Settings → Developer API.`;
-    }
+    if (serverIp) parts.push(`Render outbound IP ${serverIp}.`);
+    if (cfRay) parts.push(`cf-ray ${cfRay}.`);
   }
-  return new TrafficCreatorError(message, response.status, retryAfter);
+
+  return new TrafficCreatorError(parts.join(" "), response.status, retryAfter);
 }
 
 async function lookupOutboundIp(): Promise<string | null> {
