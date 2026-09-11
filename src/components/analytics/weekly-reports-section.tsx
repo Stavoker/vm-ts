@@ -92,6 +92,22 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
     }
   }
 
+  async function removeReport(id: string) {
+    if (!window.confirm("Видалити цей звіт? Цю дію не можна скасувати.")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/analytics/reports/${id}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Не вдалося видалити звіт");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Помилка");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Card>
       <CardHeader
@@ -162,6 +178,9 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
                       ) : null}
                       <Button type="button" variant="ghost" disabled={busy} onClick={() => void regenerate(report.id)}>
                         Перегенерувати
+                      </Button>
+                      <Button type="button" variant="danger" disabled={busy} onClick={() => void removeReport(report.id)}>
+                        Видалити
                       </Button>
                     </div>
                     {report.status === "failed" && report.error_message ? (

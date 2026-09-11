@@ -128,6 +128,18 @@ export async function getAnalyticsReport(id: string): Promise<ReportRecord> {
   return data as ReportRecord;
 }
 
+export async function deleteAnalyticsReport(id: string): Promise<void> {
+  const supabase = createServerSupabase();
+  const { data, error } = await supabase
+    .from("analytics_reports")
+    .delete()
+    .eq("id", id)
+    .select("id")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new AnalyticsError("invalid_query", "Report not found", 404);
+}
+
 export async function generateWeeklyReport(input: {
   siteId: string;
   startDate: string;
