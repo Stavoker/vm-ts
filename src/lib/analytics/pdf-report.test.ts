@@ -67,7 +67,7 @@ describe("weekly pdf report", () => {
       campaigns: [],
       landingPages: [row("/", 5000)],
       insights: ["Сесії зросли на 20.0% порівняно з минулим тижнем."],
-      trafficCost: buildTrafficCostSummary({ sessions: 12000, users: 8000, previousSessions: 10000, previousUsers: 7000 }),
+      trafficCost: buildTrafficCostSummary({ packVisits: 600_000, sessions: 12000, users: 8000, previousSessions: 10000, previousUsers: 7000 }),
     };
 
     const pdf = await generateWeeklyPdf(data);

@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { lastCompletedIsoWeek } from "@/lib/analytics/date-range";
+import { formatUsd } from "@/lib/analytics/format";
 import { addUtcDays } from "@/lib/analytics/timezone";
+import { DEFAULT_PACK_VISITS, TRAFFIC_CREATOR_PROFESSIONAL_PACKS } from "@/lib/analytics/traffic-cost";
 import type { AnalyticsReportRow } from "@/lib/analytics/types";
 import type { Site } from "@/lib/types";
 import { Alert, Button, Card, CardHeader, EmptyState, Field, Input, LoadingState, Modal, Select } from "@/components/ui/primitives";
@@ -23,6 +25,7 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
   const [modalSiteId, setModalSiteId] = useState("");
   const [startDate, setStartDate] = useState(defaultWeek.startDate);
   const [endDate, setEndDate] = useState(defaultWeek.endDate);
+  const [packVisits, setPackVisits] = useState(String(DEFAULT_PACK_VISITS));
   const { page, setPage, totalPages, slice, total } = usePagedList(reports);
 
   const load = useCallback(async () => {
@@ -64,7 +67,7 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
       const response = await fetch("/api/analytics/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ siteId: modalSiteId, startDate, endDate }),
+        body: JSON.stringify({ siteId: modalSiteId, startDate, endDate, packVisits: Number(packVisits) }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to generate report");
@@ -117,6 +120,7 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
             type="button"
             onClick={() => {
               setModalSiteId(selectedSiteId === "all" ? sites[0]?.id || "" : selectedSiteId);
+              setPackVisits(String(DEFAULT_PACK_VISITS));
               setOpen(true);
             }}
             disabled={!sites.length}
@@ -139,6 +143,7 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
                 <th className="w-[24%]">Звіт</th>
                 <th>Сайт</th>
                 <th>Період</th>
+                <th>Пакет</th>
                 <th>Згенеровано</th>
                 <th>Статус</th>
                 <th className="text-right">Дії</th>
@@ -150,6 +155,7 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
                   <td className="font-medium">{report.site_name || "Тижневий звіт"} · тижневий звіт</td>
                   <td className="whitespace-nowrap">{report.site_name || report.site_id}</td>
                   <td className="whitespace-nowrap tabular-nums">{formatPeriod(report.period_start, report.period_end)}</td>
+                  <td className="whitespace-nowrap">{report.pack_label || "—"}</td>
                   <td className="whitespace-nowrap">{report.generated_at ? formatDateTime(report.generated_at) : "—"}</td>
                   <td>
                     <span
@@ -225,12 +231,25 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
               <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </Field>
           </div>
-          <p className="mt-2 text-xs text-[var(--muted)]">Період має бути рівно 7 днів. Минулий тиждень додається для порівняння.</p>
+          <div className="mt-3">
+            <Field label="Пакет Traffic Creator">
+              <Select value={packVisits} onChange={(e) => setPackVisits(e.target.value)}>
+                {TRAFFIC_CREATOR_PROFESSIONAL_PACKS.map((pack) => (
+                  <option key={pack.visits} value={pack.visits}>
+                    {pack.label} · {formatUsd(pack.priceUsd)} · {formatUsd(pack.cpmUsd)} / 1 000
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          <p className="mt-2 text-xs text-[var(--muted)]">
+            Період має бути рівно 7 днів. Ціна тижневого трафіку рахується за обраним пакетом.
+          </p>
           <div className="mt-4 flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
               Скасувати
             </Button>
-            <Button type="button" disabled={busy || !modalSiteId} onClick={() => void generate()}>
+            <Button type="button" disabled={busy || !modalSiteId || !packVisits} onClick={() => void generate()}>
               {busy ? "Генеруємо…" : "Згенерувати звіт"}
             </Button>
           </div>

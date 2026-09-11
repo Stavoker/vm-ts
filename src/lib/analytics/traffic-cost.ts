@@ -8,6 +8,7 @@ export type TrafficCreatorPack = {
 export type TrafficCostSummary = {
   sourceUrl: string;
   sourceName: string;
+  activePack: TrafficCreatorPack;
   professionalCpmUsd: number;
   expertCpmUsd: number;
   sessionsCostUsd: number;
@@ -19,6 +20,8 @@ export type TrafficCostSummary = {
 
 export const TRAFFIC_CREATOR_SOURCE_URL = "https://traffic-creator.com/";
 export const TRAFFIC_CREATOR_SOURCE_NAME = "Traffic Creator";
+export const DEFAULT_PACK_VISITS = 600_000;
+export const EXPERT_PRICE_MULTIPLIER = 1.4;
 
 /** Official Professional packs from traffic-creator.com/pricing (checked 2026-09). */
 export const TRAFFIC_CREATOR_PROFESSIONAL_PACKS: TrafficCreatorPack[] = [
@@ -29,30 +32,48 @@ export const TRAFFIC_CREATOR_PROFESSIONAL_PACKS: TrafficCreatorPack[] = [
   pack(3_000_000, 489.95, "3 млн"),
 ];
 
-export const TRAFFIC_CREATOR_STARTER_CPM_USD = TRAFFIC_CREATOR_PROFESSIONAL_PACKS[0].cpmUsd;
-export const TRAFFIC_CREATOR_EXPERT_STARTER_PRICE_USD = 27.95;
-export const TRAFFIC_CREATOR_EXPERT_STARTER_CPM_USD = roundCpm(TRAFFIC_CREATOR_EXPERT_STARTER_PRICE_USD, 60_000);
+export function findPack(visits: unknown): TrafficCreatorPack | null {
+  const n = Number(visits);
+  if (!Number.isFinite(n)) return null;
+  return TRAFFIC_CREATOR_PROFESSIONAL_PACKS.find((item) => item.visits === n) ?? null;
+}
 
-export function costForVisits(visits: number, cpmUsd = TRAFFIC_CREATOR_STARTER_CPM_USD): number {
+export function requirePack(visits: unknown): TrafficCreatorPack {
+  const pack = findPack(visits) ?? findPack(DEFAULT_PACK_VISITS);
+  if (!pack) throw new Error("Traffic Creator pack is not configured");
+  return pack;
+}
+
+export function packVisitsFromMetadata(raw: unknown): number | undefined {
+  const record = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
+  const pack = findPack(record?.pack_visits);
+  return pack?.visits;
+}
+
+export function costForVisits(visits: number, cpmUsd: number): number {
   if (!Number.isFinite(visits) || visits <= 0 || !Number.isFinite(cpmUsd)) return 0;
   return (visits / 1000) * cpmUsd;
 }
 
 export function buildTrafficCostSummary(input: {
+  packVisits: number;
   sessions: number;
   users: number;
   previousSessions?: number;
   previousUsers?: number;
 }): TrafficCostSummary {
+  const activePack = requirePack(input.packVisits);
+  const expertCpmUsd = roundCpm(activePack.priceUsd * EXPERT_PRICE_MULTIPLIER, activePack.visits);
   return {
     sourceUrl: TRAFFIC_CREATOR_SOURCE_URL,
     sourceName: TRAFFIC_CREATOR_SOURCE_NAME,
-    professionalCpmUsd: TRAFFIC_CREATOR_STARTER_CPM_USD,
-    expertCpmUsd: TRAFFIC_CREATOR_EXPERT_STARTER_CPM_USD,
-    sessionsCostUsd: costForVisits(input.sessions),
-    usersCostUsd: costForVisits(input.users),
-    previousSessionsCostUsd: costForVisits(input.previousSessions ?? 0),
-    previousUsersCostUsd: costForVisits(input.previousUsers ?? 0),
+    activePack,
+    professionalCpmUsd: activePack.cpmUsd,
+    expertCpmUsd,
+    sessionsCostUsd: costForVisits(input.sessions, activePack.cpmUsd),
+    usersCostUsd: costForVisits(input.users, activePack.cpmUsd),
+    previousSessionsCostUsd: costForVisits(input.previousSessions ?? 0, activePack.cpmUsd),
+    previousUsersCostUsd: costForVisits(input.previousUsers ?? 0, activePack.cpmUsd),
     packs: TRAFFIC_CREATOR_PROFESSIONAL_PACKS,
   };
 }

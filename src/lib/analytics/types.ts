@@ -142,6 +142,8 @@ export type AnalyticsReportRow = {
   status: WeeklyReportStatus;
   error_message: string | null;
   created_at: string;
+  pack_visits?: number;
+  pack_label?: string;
 };
 
 export type WeeklyReportData = {

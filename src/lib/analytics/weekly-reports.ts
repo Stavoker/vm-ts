@@ -6,7 +6,7 @@ import { buildKeyInsights, meaningfulCampaigns } from "./insights";
 import { generateWeeklyPdf, weeklyPdfFilename } from "./pdf-report";
 import { getGa4Site, listGa4Sites } from "./sites";
 import { getAppTimezone } from "./timezone";
-import { buildTrafficCostSummary } from "./traffic-cost";
+import { buildTrafficCostSummary, DEFAULT_PACK_VISITS, findPack, packVisitsFromMetadata, requirePack } from "./traffic-cost";
 import type { AnalyticsQuery, AnalyticsReportRow, WeeklyReportData, WeeklyReportStatus } from "./types";
 
 const STALE_GENERATING_MS = 10 * 60 * 1000;
@@ -33,6 +33,7 @@ export async function getWeeklyAnalyticsReportData(
   siteId: string,
   startDate: string,
   endDate: string,
+  packVisits = DEFAULT_PACK_VISITS,
 ): Promise<WeeklyReportData> {
   const site = await getGa4Site(siteId);
   const timezone = getAppTimezone();
@@ -92,6 +93,7 @@ export async function getWeeklyAnalyticsReportData(
     landingPages: landingPages.rows.slice(0, 10),
     insights: [],
     trafficCost: buildTrafficCostSummary({
+      packVisits,
       sessions: current.metrics.sessions,
       users: current.metrics.totalUsers,
       previousSessions: previousOverview.metrics.sessions,
@@ -106,7 +108,7 @@ export async function listAnalyticsReports(siteId?: string): Promise<AnalyticsRe
   const supabase = createServerSupabase();
   let request = supabase
     .from("analytics_reports")
-    .select("id, site_id, report_type, period_start, period_end, file_name, generated_at, generated_by, status, error_message, created_at, sites(name, url)")
+    .select("id, site_id, report_type, period_start, period_end, file_name, generated_at, generated_by, status, error_message, created_at, metadata_json, sites(name, url)")
     .eq("report_type", "weekly")
   .order("created_at", { ascending: false })
     .limit(100);
@@ -146,11 +148,17 @@ export async function generateWeeklyReport(input: {
   endDate: string;
   generatedBy?: string;
   regenerate?: boolean;
+  packVisits?: number;
 }): Promise<AnalyticsReportRow> {
   const site = await getGa4Site(input.siteId);
   const supabase = createServerSupabase();
   const existing = await findReport(input.siteId, input.startDate, input.endDate);
-  if (existing?.status === "completed" && !input.regenerate) {
+  const packVisits =
+    findPack(input.packVisits)?.visits ??
+    packVisitsFromMetadata(existing?.metadata_json) ??
+    DEFAULT_PACK_VISITS;
+  const previousPack = packVisitsFromMetadata(existing?.metadata_json);
+  if (existing?.status === "completed" && !input.regenerate && previousPack === packVisits) {
     return toListRow(existing);
   }
   if (existing?.status === "generating" && !isStale(existing)) {
@@ -186,9 +194,10 @@ export async function generateWeeklyReport(input: {
   }
 
   try {
-    const reportData = await getWeeklyAnalyticsReportData(input.siteId, input.startDate, input.endDate);
+    const reportData = await getWeeklyAnalyticsReportData(input.siteId, input.startDate, input.endDate, packVisits);
     const pdf = await generateWeeklyPdf(reportData);
     const fileName = weeklyPdfFilename(site, input.startDate, input.endDate);
+    const pack = requirePack(packVisits);
     const { data, error } = await supabase
       .from("analytics_reports")
       .update({
@@ -202,6 +211,8 @@ export async function generateWeeklyReport(input: {
           timezone: reportData.timezone,
           sessions: reportData.current.sessions,
           users: reportData.current.totalUsers,
+          pack_visits: pack.visits,
+          pack_label: pack.label,
           traffic_cpm_usd: reportData.trafficCost.professionalCpmUsd,
           traffic_cost_sessions_usd: reportData.trafficCost.sessionsCostUsd,
           traffic_cost_users_usd: reportData.trafficCost.usersCostUsd,
@@ -211,7 +222,13 @@ export async function generateWeeklyReport(input: {
       .select("id, site_id, report_type, period_start, period_end, file_name, generated_at, generated_by, status, error_message, created_at")
       .single();
     if (error) throw new Error(error.message);
-    return { ...(data as AnalyticsReportRow), site_name: site.name, site_url: site.url };
+    return {
+      ...(data as AnalyticsReportRow),
+      site_name: site.name,
+      site_url: site.url,
+      pack_visits: pack.visits,
+      pack_label: pack.label,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to generate report";
     await supabase
@@ -239,6 +256,7 @@ export async function generateScheduledWeeklyReports(now = new Date()) {
         endDate: week.endDate,
         generatedBy: "schedule",
         regenerate: existing?.status === "failed" || isStale(existing),
+        packVisits: packVisitsFromMetadata(existing?.metadata_json) ?? (await lastPackVisitsForSite(site.id)),
       });
       results.push({ siteId: site.id, siteName: site.name, status: row.status });
     } catch (error) {
@@ -267,6 +285,20 @@ async function findReport(siteId: string, startDate: string, endDate: string): P
   return (data as ReportRecord) || null;
 }
 
+async function lastPackVisitsForSite(siteId: string): Promise<number> {
+  const supabase = createServerSupabase();
+  const { data, error } = await supabase
+    .from("analytics_reports")
+    .select("metadata_json")
+    .eq("site_id", siteId)
+    .eq("status", "completed")
+    .order("generated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return packVisitsFromMetadata(data?.metadata_json) ?? DEFAULT_PACK_VISITS;
+}
+
 function isStale(row?: ReportRecord | null): boolean {
   if (!row || row.status !== "generating") return false;
   const updated = Date.parse(row.updated_at || row.created_at);
@@ -275,6 +307,8 @@ function isStale(row?: ReportRecord | null): boolean {
 
 function toListRow(row: ReportRecord): AnalyticsReportRow {
   const site = Array.isArray(row.sites) ? row.sites[0] : row.sites;
+  const packVisits = packVisitsFromMetadata(row.metadata_json);
+  const pack = packVisits ? findPack(packVisits) : null;
   return {
     id: row.id,
     site_id: row.site_id,
@@ -289,5 +323,7 @@ function toListRow(row: ReportRecord): AnalyticsReportRow {
     status: row.status,
     error_message: row.error_message,
     created_at: row.created_at,
+    pack_visits: pack?.visits,
+    pack_label: pack?.label,
   };
 }

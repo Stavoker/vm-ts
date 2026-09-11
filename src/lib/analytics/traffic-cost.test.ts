@@ -1,33 +1,32 @@
 import { describe, expect, it } from "vitest";
-import {
-  TRAFFIC_CREATOR_EXPERT_STARTER_CPM_USD,
-  TRAFFIC_CREATOR_STARTER_CPM_USD,
-  buildTrafficCostSummary,
-  costForVisits,
-} from "./traffic-cost";
+import { buildTrafficCostSummary, costForVisits, findPack, requirePack } from "./traffic-cost";
 
 describe("traffic cost", () => {
-  it("uses Traffic Creator Professional starter CPM of $0.33 per 1000 visits", () => {
-    expect(TRAFFIC_CREATOR_STARTER_CPM_USD).toBe(0.33);
-    expect(costForVisits(1000)).toBeCloseTo(0.33);
-    expect(costForVisits(10_000)).toBeCloseTo(3.3);
+  it("prices the selected 600k pack at $0.19 per 1000 visits", () => {
+    const pack = requirePack(600_000);
+    expect(pack.priceUsd).toBe(114.95);
+    expect(pack.cpmUsd).toBe(0.19);
+    expect(costForVisits(1000, pack.cpmUsd)).toBeCloseTo(0.19);
+    expect(costForVisits(13_284, pack.cpmUsd)).toBeCloseTo(2.52396);
   });
 
-  it("prices Expert starter traffic at $0.47 per 1000 visits", () => {
-    expect(TRAFFIC_CREATOR_EXPERT_STARTER_CPM_USD).toBe(0.47);
+  it("rejects unknown packs", () => {
+    expect(findPack(123)).toBeNull();
   });
 
-  it("summarizes weekly session and user cost", () => {
+  it("summarizes weekly cost from the chosen pack", () => {
     const summary = buildTrafficCostSummary({
+      packVisits: 600_000,
       sessions: 12_000,
       users: 8_000,
       previousSessions: 10_000,
       previousUsers: 7_000,
     });
-    expect(summary.sourceUrl).toBe("https://traffic-creator.com/");
-    expect(summary.sessionsCostUsd).toBeCloseTo(3.96);
-    expect(summary.usersCostUsd).toBeCloseTo(2.64);
-    expect(summary.previousSessionsCostUsd).toBeCloseTo(3.3);
-    expect(summary.packs.map((pack) => pack.visits)).toEqual([60_000, 300_000, 600_000, 1_000_000, 3_000_000]);
+    expect(summary.activePack.visits).toBe(600_000);
+    expect(summary.professionalCpmUsd).toBe(0.19);
+    expect(summary.expertCpmUsd).toBe(0.27);
+    expect(summary.sessionsCostUsd).toBeCloseTo(2.28);
+    expect(summary.usersCostUsd).toBeCloseTo(1.52);
+    expect(summary.previousSessionsCostUsd).toBeCloseTo(1.9);
   });
 });

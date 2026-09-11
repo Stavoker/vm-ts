@@ -215,7 +215,7 @@ function drawTrafficCost(doc: PDFDoc, data: WeeklyReportData) {
   const cost = data.trafficCost;
   sectionTitle(doc, "Вартість трафіку Traffic Creator");
   doc.fillColor(MUTED).font(FONT).fontSize(8).text(
-    `Тарифи Professional на ${cost.sourceUrl}  ·  вартість 1 000 візитів рахується за стартовим пакетом 60 тис.`,
+    `Тарифи Professional на ${cost.sourceUrl}  ·  ваш пакет ${cost.activePack.label}  ·  ${formatUsd(cost.activePack.cpmUsd)} за 1 000 візитів`,
     MARGIN,
     doc.y,
     { width: CONTENT_WIDTH },
@@ -257,7 +257,7 @@ function drawTrafficCost(doc: PDFDoc, data: WeeklyReportData) {
       n(pack.visits),
       formatUsd(pack.priceUsd),
       formatUsd(pack.cpmUsd),
-      "Professional",
+      pack.visits === cost.activePack.visits ? "Ваш пакет" : "Professional",
     ]),
   );
 }

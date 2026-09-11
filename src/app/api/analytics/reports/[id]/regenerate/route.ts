@@ -1,4 +1,5 @@
 import { jsonError, jsonOk } from "@/lib/analytics/query";
+import { packVisitsFromMetadata } from "@/lib/analytics/traffic-cost";
 import { generateWeeklyReport, getAnalyticsReport } from "@/lib/analytics/weekly-reports";
 
 type Params = { params: Promise<{ id: string }> };
@@ -13,6 +14,7 @@ export async function POST(_request: Request, { params }: Params) {
       endDate: reportDate(existing.period_end),
       generatedBy: "manual",
       regenerate: true,
+      packVisits: packVisitsFromMetadata(existing.metadata_json),
     });
     return jsonOk({ report });
   } catch (error) {
