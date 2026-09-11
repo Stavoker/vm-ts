@@ -6,6 +6,7 @@ import { buildKeyInsights, meaningfulCampaigns } from "./insights";
 import { generateWeeklyPdf, weeklyPdfFilename } from "./pdf-report";
 import { getGa4Site, listGa4Sites } from "./sites";
 import { getAppTimezone } from "./timezone";
+import { buildTrafficCostSummary } from "./traffic-cost";
 import type { AnalyticsQuery, AnalyticsReportRow, WeeklyReportData, WeeklyReportStatus } from "./types";
 
 const STALE_GENERATING_MS = 10 * 60 * 1000;
@@ -90,6 +91,12 @@ export async function getWeeklyAnalyticsReportData(
     campaigns: meaningfulCampaigns(campaigns.rows).slice(0, 10),
     landingPages: landingPages.rows.slice(0, 10),
     insights: [],
+    trafficCost: buildTrafficCostSummary({
+      sessions: current.metrics.sessions,
+      users: current.metrics.totalUsers,
+      previousSessions: previousOverview.metrics.sessions,
+      previousUsers: previousOverview.metrics.totalUsers,
+    }),
   };
   data.insights = buildKeyInsights(data);
   return data;
@@ -183,6 +190,9 @@ export async function generateWeeklyReport(input: {
           timezone: reportData.timezone,
           sessions: reportData.current.sessions,
           users: reportData.current.totalUsers,
+          traffic_cpm_usd: reportData.trafficCost.professionalCpmUsd,
+          traffic_cost_sessions_usd: reportData.trafficCost.sessionsCostUsd,
+          traffic_cost_users_usd: reportData.trafficCost.usersCostUsd,
         },
       })
       .eq("id", reportId)

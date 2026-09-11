@@ -1,7 +1,8 @@
-import { formatPercent, formatSignedPercent, formatSignedPoints, ratioChange } from "./format";
+import { formatPercent, formatSignedPercent, formatSignedPointsUk, ratioChange } from "./format";
+import { translateCountryLabel, translateDeviceLabel } from "./pdf-i18n";
 import type { BreakdownRow, WeeklyReportData } from "./types";
 
-const WEEKDAY = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const WEEKDAY = ["неділя", "понеділок", "вівторок", "середа", "четвер", "п'ятниця", "субота"];
 
 export function buildKeyInsights(data: Pick<
   WeeklyReportData,
@@ -10,55 +11,54 @@ export function buildKeyInsights(data: Pick<
   const insights: string[] = [];
   const sessionsChange = ratioChange(data.current.sessions, data.previous.sessions);
   if (sessionsChange != null) {
+    const abs = formatSignedPercent(Math.abs(sessionsChange)).replace("+", "");
     insights.push(
-      `Sessions ${sessionsChange >= 0 ? "increased" : "decreased"} by ${formatSignedPercent(Math.abs(sessionsChange)).replace("+", "")} compared with the previous week.`,
+      sessionsChange >= 0
+        ? `Сесії зросли на ${abs} порівняно з минулим тижнем.`
+        : `Сесії знизилися на ${abs} порівняно з минулим тижнем.`,
     );
   }
 
   const bounceChange = data.current.bounceRate - data.previous.bounceRate;
   if (data.previous.sessions > 0) {
+    const abs = formatSignedPointsUk(Math.abs(bounceChange)).replace("+", "");
     insights.push(
-      `Bounce rate ${bounceChange <= 0 ? "improved" : "worsened"} by ${formatSignedPoints(Math.abs(bounceChange)).replace("+", "")} versus the previous week.`,
+      bounceChange <= 0
+        ? `Показник відмов покращився на ${abs} порівняно з минулим тижнем.`
+        : `Показник відмов погіршився на ${abs} порівняно з минулим тижнем.`,
     );
   }
 
   const topCountry = data.countries[0];
   if (topCountry && topCountry.sessionsShare > 0) {
     insights.push(
-      `${topCountry.label} generated the largest share of traffic with ${formatPercent(topCountry.sessionsShare)} of all sessions.`,
+      `${translateCountryLabel(topCountry.label)} забезпечила найбільшу частку трафіку — ${formatPercent(topCountry.sessionsShare)} усіх сесій.`,
     );
   }
 
   const bounceDevice = [...data.devices].sort((a, b) => b.bounceRate - a.bounceRate)[0];
   if (bounceDevice && bounceDevice.sessions > 0) {
     insights.push(
-      `${capitalize(bounceDevice.label)} traffic had the highest bounce rate at ${formatPercent(bounceDevice.bounceRate)}.`,
+      `Трафік з пристроїв «${translateDeviceLabel(bounceDevice.label)}» мав найвищий показник відмов — ${formatPercent(bounceDevice.bounceRate)}.`,
     );
   }
 
   const topSource = data.sources[0];
   if (topSource && topSource.sessionsShare > 0) {
-    insights.push(
-      `${topSource.label} generated ${formatPercent(topSource.sessionsShare)} of total sessions.`,
-    );
+    insights.push(`${topSource.label} забезпечило ${formatPercent(topSource.sessionsShare)} усіх сесій.`);
   }
 
   const peakDay = [...data.daily].sort((a, b) => b.sessions - a.sessions)[0];
   if (peakDay) {
-    insights.push(`${weekdayName(peakDay.key)} had the highest traffic volume of the week.`);
+    insights.push(`Найбільший обсяг трафіку був у ${weekdayName(peakDay.key)}.`);
   }
 
   const newUserShare = data.current.totalUsers > 0 ? data.current.newUsers / data.current.totalUsers : 0;
   if (data.current.totalUsers > 0) {
-    insights.push(`New users accounted for ${formatPercent(newUserShare)} of total users.`);
+    insights.push(`Нові користувачі становили ${formatPercent(newUserShare)} від усіх користувачів.`);
   }
 
   return unique(insights).slice(0, 7);
-}
-
-function capitalize(value: string) {
-  if (!value) return value;
-  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function weekdayName(dateYmd: string): string {

@@ -95,7 +95,7 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
   return (
     <Card>
       <CardHeader
-        title="Weekly Reports"
+        title="Тижневі звіти"
         extra={
           <Button
             type="button"
@@ -105,39 +105,39 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
             }}
             disabled={!sites.length}
           >
-            Generate Weekly PDF
+            Згенерувати PDF
           </Button>
         }
       />
       {error ? <Alert className="mb-3">{error}</Alert> : null}
       {loading ? (
-        <LoadingState label="Loading…" />
+        <LoadingState label="Завантаження…" />
       ) : reports.length === 0 ? (
-        <EmptyState title="No weekly reports yet." hint="Generate a 7-day PDF for a connected site." />
+        <EmptyState title="Ще немає тижневих звітів." hint="Згенеруйте 7-денний PDF для підключеного сайту." />
       ) : (
         <div className="overflow-hidden rounded-[14px] border border-[var(--border)]">
           <div className="overflow-x-auto">
           <table className="ui-table">
             <thead>
               <tr>
-                <th className="w-[24%]">Report</th>
-                <th>Website</th>
-                <th>Period</th>
-                <th>Generated At</th>
-                <th>Status</th>
-                <th className="text-right">Actions</th>
+                <th className="w-[24%]">Звіт</th>
+                <th>Сайт</th>
+                <th>Період</th>
+                <th>Згенеровано</th>
+                <th>Статус</th>
+                <th className="text-right">Дії</th>
               </tr>
             </thead>
             <tbody>
               {slice.map((report) => (
                 <tr key={report.id}>
-                  <td className="font-medium">{report.site_name || "Weekly Traffic Report"} Weekly Report</td>
+                  <td className="font-medium">{report.site_name || "Тижневий звіт"} · тижневий звіт</td>
                   <td className="whitespace-nowrap">{report.site_name || report.site_id}</td>
                   <td className="whitespace-nowrap tabular-nums">{formatPeriod(report.period_start, report.period_end)}</td>
                   <td className="whitespace-nowrap">{report.generated_at ? formatDateTime(report.generated_at) : "—"}</td>
                   <td>
                     <span
-                      className={`ui-chip capitalize ${
+                      className={`ui-chip ${
                         report.status === "completed"
                           ? "bg-[#e8f8ee] text-[#248a3d]"
                           : report.status === "failed"
@@ -145,7 +145,7 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
                             : "bg-[#f2f2f7] text-[#6e6e73]"
                       }`}
                     >
-                      {report.status}
+                      {statusLabel(report.status)}
                     </span>
                   </td>
                   <td>
@@ -153,15 +153,15 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
                       {report.status === "completed" ? (
                         <>
                           <a className="ui-btn ui-btn-ghost" href={`/api/analytics/reports/${report.id}/download`} target="_blank" rel="noreferrer">
-                            View
+                            Переглянути
                           </a>
                           <a className="ui-btn ui-btn-secondary" href={`/api/analytics/reports/${report.id}/download`}>
-                            Download
+                            Завантажити
                           </a>
                         </>
                       ) : null}
                       <Button type="button" variant="ghost" disabled={busy} onClick={() => void regenerate(report.id)}>
-                        Regenerate
+                        Перегенерувати
                       </Button>
                     </div>
                     {report.status === "failed" && report.error_message ? (
@@ -179,9 +179,9 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
 
       {open ? (
         <Modal onClose={() => setOpen(false)}>
-          <h3 className="text-[17px] font-semibold tracking-tight">Generate Weekly PDF</h3>
+          <h3 className="text-[17px] font-semibold tracking-tight">Згенерувати тижневий PDF</h3>
           <div className="mt-4">
-            <Field label="Website">
+            <Field label="Сайт">
               <Select value={modalSiteId} onChange={(e) => setModalSiteId(e.target.value)}>
                 {sites.map((site) => (
                   <option key={site.id} value={site.id}>
@@ -192,7 +192,7 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
             </Field>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3">
-            <Field label="From">
+            <Field label="Від">
               <Input
                 type="date"
                 value={startDate}
@@ -202,17 +202,17 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
                 }}
               />
             </Field>
-            <Field label="To">
+            <Field label="До">
               <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </Field>
           </div>
-          <p className="mt-2 text-xs text-[var(--muted)]">Must be exactly 7 days. Previous week is included for comparison.</p>
+          <p className="mt-2 text-xs text-[var(--muted)]">Період має бути рівно 7 днів. Минулий тиждень додається для порівняння.</p>
           <div className="mt-4 flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
-              Cancel
+              Скасувати
             </Button>
             <Button type="button" disabled={busy || !modalSiteId} onClick={() => void generate()}>
-              {busy ? "Generating…" : "Generate Report"}
+              {busy ? "Генеруємо…" : "Згенерувати звіт"}
             </Button>
           </div>
         </Modal>
@@ -221,12 +221,19 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
   );
 }
 
+function statusLabel(status: AnalyticsReportRow["status"]) {
+  if (status === "completed") return "Готово";
+  if (status === "failed") return "Помилка";
+  if (status === "generating") return "Генерується";
+  return "Очікує";
+}
+
 function formatPeriod(start: string, end: string) {
   return `${start.slice(0, 10)}\u00a0– ${end.slice(0, 10)}`;
 }
 
 function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("en-GB", {
+  return new Intl.DateTimeFormat("uk-UA", {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));

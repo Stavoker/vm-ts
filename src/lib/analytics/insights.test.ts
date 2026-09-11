@@ -71,8 +71,8 @@ describe("buildKeyInsights", () => {
 
     expect(insights.length).toBeGreaterThanOrEqual(3);
     expect(insights.length).toBeLessThanOrEqual(7);
-    expect(insights.some((item) => item.includes("Sessions increased"))).toBe(true);
-    expect(insights.some((item) => item.includes("France"))).toBe(true);
-    expect(insights.some((item) => /Mobile traffic had the highest bounce rate/i.test(item))).toBe(true);
+    expect(insights.some((item) => item.includes("Сесії зросли"))).toBe(true);
+    expect(insights.some((item) => item.includes("Франція"))).toBe(true);
+    expect(insights.some((item) => /найвищий показник відмов/i.test(item))).toBe(true);
   });
 });

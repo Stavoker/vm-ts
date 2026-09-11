@@ -94,12 +94,23 @@ export function parseDateHour(value: string): { date: string; hour: number } | n
   };
 }
 
-export function formatDateLabel(dateYmd: string): string {
+export function formatDateLabel(dateYmd: string, locale = "en-GB"): string {
   const [year, month, day] = dateYmd.split("-").map(Number);
-  return new Intl.DateTimeFormat("en-GB", {
+  return new Intl.DateTimeFormat(locale, {
     day: "2-digit",
     month: "short",
     year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, day)));
+}
+
+export function formatUkDateLabel(dateYmd: string): string {
+  const [year, month, day] = dateYmd.split("-").map(Number);
+  return new Intl.DateTimeFormat("uk-UA", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
   }).format(new Date(Date.UTC(year, month - 1, day)));
 }
 

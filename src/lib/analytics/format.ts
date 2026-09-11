@@ -1,9 +1,24 @@
-export function formatNumber(value: number, digits = 0): string {
+export function formatNumber(value: number, digits = 0, locale = "en-US"): string {
   if (!Number.isFinite(value)) return "—";
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat(locale, {
     maximumFractionDigits: digits,
     minimumFractionDigits: digits,
   }).format(value);
+}
+
+export function formatUsd(value: number, digits = 2): string {
+  if (!Number.isFinite(value)) return "—";
+  return `$${new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(value)}`;
+}
+
+export function formatSignedPointsUk(change: number, digits = 1): string {
+  if (!Number.isFinite(change)) return "—";
+  const points = change * 100;
+  const sign = points > 0 ? "+" : "";
+  return `${sign}${points.toFixed(digits)} в.п.`;
 }
 
 export function formatPercent(rate: number, digits = 1): string {

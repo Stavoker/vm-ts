@@ -1,3 +1,5 @@
+import type { TrafficCostSummary } from "./traffic-cost";
+
 export type DatePreset =
   | "today"
   | "last_24h"
@@ -159,6 +161,7 @@ export type WeeklyReportData = {
   campaigns: BreakdownRow[];
   landingPages: BreakdownRow[];
   insights: string[];
+  trafficCost: TrafficCostSummary;
 };
 
 export const DATE_PRESET_LABELS: Record<DatePreset, string> = {
