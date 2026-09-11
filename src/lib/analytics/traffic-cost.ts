@@ -27,10 +27,6 @@ export const TRAFFIC_CREATOR_PROFESSIONAL_PACKS: TrafficCreatorPack[] = [
   pack(600_000, 114.95, "600 тис."),
   pack(1_000_000, 189.95, "1 млн"),
   pack(3_000_000, 489.95, "3 млн"),
-  pack(6_000_000, 849.95, "6 млн"),
-  pack(10_000_000, 1_299.95, "10 млн"),
-  pack(30_000_000, 3_299.95, "30 млн"),
-  pack(60_000_000, 5_399.95, "60 млн"),
 ];
 
 export const TRAFFIC_CREATOR_STARTER_CPM_USD = TRAFFIC_CREATOR_PROFESSIONAL_PACKS[0].cpmUsd;

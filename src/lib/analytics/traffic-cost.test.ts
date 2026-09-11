@@ -28,6 +28,6 @@ describe("traffic cost", () => {
     expect(summary.sessionsCostUsd).toBeCloseTo(3.96);
     expect(summary.usersCostUsd).toBeCloseTo(2.64);
     expect(summary.previousSessionsCostUsd).toBeCloseTo(3.3);
-    expect(summary.packs.length).toBeGreaterThanOrEqual(4);
+    expect(summary.packs.map((pack) => pack.visits)).toEqual([60_000, 300_000, 600_000, 1_000_000, 3_000_000]);
   });
 });

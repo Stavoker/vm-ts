@@ -36,7 +36,7 @@ const FONT_BOLD = "Report-Bold";
 const LOCALE = "uk-UA";
 const HEADER_HEIGHT = 92;
 const CONTINUATION_TOP = 50;
-const TABLE_HEADER_H = 22;
+const TABLE_HEADER_H = 30;
 const TABLE_ROW_H = 18;
 
 type PDFDoc = InstanceType<typeof PDFDocument>;
@@ -260,16 +260,6 @@ function drawTrafficCost(doc: PDFDoc, data: WeeklyReportData) {
       "Professional",
     ]),
   );
-  const sessionsChange = ratioChange(cost.sessionsCostUsd, cost.previousSessionsCostUsd);
-  doc.fillColor(MUTED).font(FONT).fontSize(8).text(
-    `Орієнтовна вартість тижневих сесій: ${formatUsd(cost.sessionsCostUsd)}` +
-      (sessionsChange == null ? "." : ` (${formatSignedPercent(sessionsChange)} до минулого тижня).`) +
-      " Expert дорожчий приблизно на 40%.",
-    MARGIN,
-    doc.y,
-    { width: CONTENT_WIDTH },
-  );
-  doc.moveDown(0.8);
 }
 
 function drawTrend(doc: PDFDoc, daily: TimeseriesPoint[]) {
@@ -421,11 +411,11 @@ function drawLandingSection(doc: PDFDoc, rows: BreakdownRow[]) {
 function drawComparison(doc: PDFDoc, data: WeeklyReportData) {
   sectionTitle(doc, "Порівняння з минулим тижнем");
   const columns: Column[] = [
-    { label: "Показник", width: 150, align: "left" },
-    { label: "Поточний тиждень", width: 90, align: "right" },
-    { label: "Минулий тиждень", width: 90, align: "right" },
-    { label: "Різниця", width: 90, align: "right" },
-    { label: "Зміна", width: 101, align: "right" },
+    { label: "Показник", width: 138, align: "left" },
+    { label: "Цей тиждень", width: 108, align: "right" },
+    { label: "Минулий тиждень", width: 108, align: "right" },
+    { label: "Різниця", width: 84, align: "right" },
+    { label: "Зміна", width: 85, align: "right" },
   ];
   drawStyledTable(doc, columns, [
     compareRow("Користувачі", data.current.totalUsers, data.previous.totalUsers, "number"),
@@ -524,10 +514,17 @@ function drawStyledTable(doc: PDFDoc, columns: Column[], rows: string[][], optio
     doc.restore();
     let x = MARGIN;
     for (const column of padded) {
-      doc.fillColor(WHITE).font(FONT_BOLD).fontSize(7).text(column.label.toUpperCase(), x + 6, y + 7, {
-        width: column.width - 12,
+      const labelWidth = column.width - 12;
+      doc.font(FONT_BOLD).fontSize(7);
+      const labelHeight = Math.min(
+        TABLE_HEADER_H - 4,
+        doc.heightOfString(column.label, { width: labelWidth, align: column.align }),
+      );
+      const labelY = y + Math.max(4, (TABLE_HEADER_H - labelHeight) / 2);
+      doc.fillColor(WHITE).text(column.label, x + 6, labelY, {
+        width: labelWidth,
+        height: TABLE_HEADER_H - 6,
         align: column.align,
-        lineBreak: false,
       });
       x += column.width;
     }
