@@ -104,15 +104,18 @@ export function formatDateLabel(dateYmd: string, locale = "en-GB"): string {
   }).format(new Date(Date.UTC(year, month - 1, day)));
 }
 
-export function formatUkDateLabel(dateYmd: string): string {
+export function formatRuDateLabel(dateYmd: string): string {
   const [year, month, day] = dateYmd.split("-").map(Number);
-  return new Intl.DateTimeFormat("uk-UA", {
+  return new Intl.DateTimeFormat("ru-RU", {
     day: "numeric",
     month: "long",
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(Date.UTC(year, month - 1, day)));
 }
+
+/** @deprecated Use formatRuDateLabel */
+export const formatUkDateLabel = formatRuDateLabel;
 
 export function formatHourLabel(dateHour: string): string {
   const parsed = parseDateHour(dateHour);

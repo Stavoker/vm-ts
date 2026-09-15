@@ -6,14 +6,14 @@ import {
   formatNumber,
   formatPercent,
   formatSignedPercent,
-  formatSignedPointsUk,
+  formatSignedPointsRu,
   formatUsd,
   isImprovement,
   pointsChange,
   ratioChange,
 } from "./format";
 import { translateCountryLabel, translateDeviceLabel, translateSourceLabel } from "./pdf-i18n";
-import { formatUkDateLabel, hostnameFromUrl } from "./timezone";
+import { formatRuDateLabel, hostnameFromUrl } from "./timezone";
 import type { BreakdownRow, TimeseriesPoint, WeeklyReportData } from "./types";
 
 const MARGIN = 36;
@@ -33,7 +33,7 @@ const WHITE = "#ffffff";
 const SERIES = ["#0f172a", "#0071e3", "#059669"];
 const FONT = "Report";
 const FONT_BOLD = "Report-Bold";
-const LOCALE = "uk-UA";
+const LOCALE = "ru-RU";
 const HEADER_HEIGHT = 92;
 const CONTINUATION_TOP = 50;
 const TABLE_HEADER_H = 30;
@@ -86,7 +86,7 @@ export function weeklyPdfFilename(
   endDate: string,
 ): string {
   const domain = hostnameFromUrl(site.url).replace(/\./g, "_");
-  return `${domain}_tyzhnevyy_zvit_${startDate}_${endDate}.pdf`;
+  return `${domain}_ezhenedelnyy_otchet_${startDate}_${endDate}.pdf`;
 }
 
 export async function generateWeeklyPdf(data: WeeklyReportData): Promise<Buffer> {
@@ -95,7 +95,7 @@ export async function generateWeeklyPdf(data: WeeklyReportData): Promise<Buffer>
     margin: MARGIN,
     bufferPages: true,
     info: {
-      Title: `${data.site.name} — тижневий звіт трафіку`,
+      Title: `${data.site.name} — еженедельный отчёт по трафику`,
       Author: "Vitrina Monitor",
     },
   });
@@ -135,14 +135,14 @@ function drawHero(doc: PDFDoc, data: WeeklyReportData) {
   doc.rect(0, 0, PAGE_WIDTH, HEADER_HEIGHT).fill(NAVY);
   doc.rect(0, HEADER_HEIGHT - 4, PAGE_WIDTH, 4).fill(ACCENT);
   doc.restore();
-  doc.fillColor("#93c5fd").font(FONT).fontSize(8).text("VITRINA MONITOR  ·  ТИЖНЕВИЙ ЗВІТ", MARGIN, 18, {
+  doc.fillColor("#93c5fd").font(FONT).fontSize(8).text("VITRINA MONITOR  ·  ЕЖЕНЕДЕЛЬНЫЙ ОТЧЁТ", MARGIN, 18, {
     width: CONTENT_WIDTH,
   });
   doc.fillColor(WHITE).font(FONT_BOLD).fontSize(20).text(data.site.name, MARGIN, 34, {
     width: CONTENT_WIDTH,
   });
   doc.fillColor("#cbd5e1").font(FONT).fontSize(9).text(
-    `${formatUkDateLabel(data.periodStart)} — ${formatUkDateLabel(data.periodEnd)}  ·  ${data.site.domain}  ·  ${data.timezone}`,
+    `${formatRuDateLabel(data.periodStart)} — ${formatRuDateLabel(data.periodEnd)}  ·  ${data.site.domain}  ·  ${data.timezone}`,
     MARGIN,
     62,
     { width: CONTENT_WIDTH },
@@ -152,16 +152,16 @@ function drawHero(doc: PDFDoc, data: WeeklyReportData) {
 }
 
 function drawKpiGrid(doc: PDFDoc, data: WeeklyReportData) {
-  sectionTitle(doc, "Короткий підсумок");
+  sectionTitle(doc, "Краткое резюме");
   const cards: { label: string; value: string; change: string; good: boolean | null }[] = [
-    kpiCard("Користувачі", n(data.current.totalUsers), data.current.totalUsers, data.previous.totalUsers),
-    kpiCard("Нові користувачі", n(data.current.newUsers), data.current.newUsers, data.previous.newUsers),
-    kpiCard("Сесії / візити", n(data.current.sessions), data.current.sessions, data.previous.sessions),
-    kpiCard("Перегляди сторінок", n(data.current.pageViews), data.current.pageViews, data.previous.pageViews),
-    kpiCard("Показник відмов", formatPercent(data.current.bounceRate), data.current.bounceRate, data.previous.bounceRate, "bounceRate"),
-    kpiCard("Рівень залучення", formatPercent(data.current.engagementRate), data.current.engagementRate, data.previous.engagementRate),
-    kpiCard("Середній час взаємодії", formatDuration(data.current.averageEngagementTime), data.current.averageEngagementTime, data.previous.averageEngagementTime),
-    kpiCard("Перегляди / сесія", n(data.current.viewsPerSession, 2), data.current.viewsPerSession, data.previous.viewsPerSession),
+    kpiCard("Пользователи", n(data.current.totalUsers), data.current.totalUsers, data.previous.totalUsers),
+    kpiCard("Новые пользователи", n(data.current.newUsers), data.current.newUsers, data.previous.newUsers),
+    kpiCard("Сессии / визиты", n(data.current.sessions), data.current.sessions, data.previous.sessions),
+    kpiCard("Просмотры страниц", n(data.current.pageViews), data.current.pageViews, data.previous.pageViews),
+    kpiCard("Показатель отказов", formatPercent(data.current.bounceRate), data.current.bounceRate, data.previous.bounceRate, "bounceRate"),
+    kpiCard("Уровень вовлечённости", formatPercent(data.current.engagementRate), data.current.engagementRate, data.previous.engagementRate),
+    kpiCard("Среднее время взаимодействия", formatDuration(data.current.averageEngagementTime), data.current.averageEngagementTime, data.previous.averageEngagementTime),
+    kpiCard("Просмотры / сессия", n(data.current.viewsPerSession, 2), data.current.viewsPerSession, data.previous.viewsPerSession),
   ];
   ensureSpace(doc, 220);
   const startY = doc.y;
@@ -198,7 +198,7 @@ function kpiCard(
     return {
       label,
       value,
-      change: previous || current ? `${formatSignedPointsUk(change)} до минулого тижня` : "—",
+      change: previous || current ? `${formatSignedPointsRu(change)} к прошлой неделе` : "—",
       good: isImprovement("bounceRate", change),
     };
   }
@@ -206,16 +206,16 @@ function kpiCard(
   return {
     label,
     value,
-    change: change == null ? "—" : `${formatSignedPercent(change)} до минулого тижня`,
+    change: change == null ? "—" : `${formatSignedPercent(change)} к прошлой неделе`,
     good: change == null ? null : isImprovement("default", change),
   };
 }
 
 function drawTrafficCost(doc: PDFDoc, data: WeeklyReportData) {
   const cost = data.trafficCost;
-  sectionTitle(doc, "Вартість трафіку Traffic Creator");
+  sectionTitle(doc, "Стоимость трафика Traffic Creator");
   doc.fillColor(MUTED).font(FONT).fontSize(8).text(
-    `Тарифи Professional на ${cost.sourceUrl}  ·  ваш пакет ${cost.activePack.label}  ·  ${formatUsd(cost.activePack.cpmUsd)} за 1 000 візитів`,
+    `Тарифы Professional на ${cost.sourceUrl}  ·  ваш пакет ${cost.activePack.label}  ·  ${formatUsd(cost.activePack.cpmUsd)} за 1 000 визитов`,
     MARGIN,
     doc.y,
     { width: CONTENT_WIDTH },
@@ -223,10 +223,10 @@ function drawTrafficCost(doc: PDFDoc, data: WeeklyReportData) {
   doc.moveDown(0.45);
   ensureSpace(doc, 70);
   const cards = [
-    { label: "1 000 візитів · Professional", value: formatUsd(cost.professionalCpmUsd), accent: ORANGE },
-    { label: "1 000 візитів · Expert", value: formatUsd(cost.expertCpmUsd), accent: NAVY },
-    { label: "Сесії за тиждень", value: formatUsd(cost.sessionsCostUsd), accent: ACCENT },
-    { label: "Користувачі за тиждень", value: formatUsd(cost.usersCostUsd), accent: ACCENT },
+    { label: "1 000 визитов · Professional", value: formatUsd(cost.professionalCpmUsd), accent: ORANGE },
+    { label: "1 000 визитов · Expert", value: formatUsd(cost.expertCpmUsd), accent: NAVY },
+    { label: "Сессии за неделю", value: formatUsd(cost.sessionsCostUsd), accent: ACCENT },
+    { label: "Пользователи за неделю", value: formatUsd(cost.usersCostUsd), accent: ACCENT },
   ];
   const gap = 8;
   const width = (CONTENT_WIDTH - gap * 3) / 4;
@@ -244,10 +244,10 @@ function drawTrafficCost(doc: PDFDoc, data: WeeklyReportData) {
 
   const columns: Column[] = [
     { label: "Пакет", width: 90, align: "left" },
-    { label: "Візити", width: 90, align: "right" },
-    { label: "Ціна пакета", width: 100, align: "right" },
-    { label: "Ціна за 1 000", width: 100, align: "right" },
-    { label: "Якість", width: 131, align: "right" },
+    { label: "Визиты", width: 90, align: "right" },
+    { label: "Цена пакета", width: 100, align: "right" },
+    { label: "Цена за 1 000", width: 100, align: "right" },
+    { label: "Качество", width: 131, align: "right" },
   ];
   drawStyledTable(
     doc,
@@ -264,14 +264,14 @@ function drawTrafficCost(doc: PDFDoc, data: WeeklyReportData) {
 
 function drawTrend(doc: PDFDoc, daily: TimeseriesPoint[]) {
   ensureSpace(doc, 210);
-  doc.fillColor(NAVY).font(FONT_BOLD).fontSize(12).text("Трафік протягом тижня", MARGIN, doc.y);
-  doc.fillColor(MUTED).font(FONT).fontSize(8).text("Сесії, користувачі та перегляди сторінок за днями", MARGIN, doc.y + 2);
+  doc.fillColor(NAVY).font(FONT_BOLD).fontSize(12).text("Трафик в течение недели", MARGIN, doc.y);
+  doc.fillColor(MUTED).font(FONT).fontSize(8).text("Сессии, пользователи и просмотры страниц по дням", MARGIN, doc.y + 2);
   doc.moveDown(0.5);
   const chartY = doc.y;
   const height = 150;
   doc.roundedRect(MARGIN, chartY, CONTENT_WIDTH, height, 6).fillAndStroke(CARD_BG, LINE);
   if (daily.length === 0) {
-    doc.fillColor(MUTED).font(FONT).fontSize(9).text("Немає даних аналітики за вибраний період", MARGIN + 12, chartY + 68);
+    doc.fillColor(MUTED).font(FONT).fontSize(9).text("Нет данных аналитики за выбранный период", MARGIN + 12, chartY + 68);
     doc.y = chartY + height + 12;
     return;
   }
@@ -281,9 +281,9 @@ function drawTrend(doc: PDFDoc, daily: TimeseriesPoint[]) {
   const innerWidth = CONTENT_WIDTH - 48;
   const innerHeight = height - 42;
   const series = [
-    { key: "sessions" as const, label: "Сесії", color: SERIES[0] },
-    { key: "activeUsers" as const, label: "Користувачі", color: SERIES[1] },
-    { key: "pageViews" as const, label: "Перегляди", color: SERIES[2] },
+    { key: "sessions" as const, label: "Сессии", color: SERIES[0] },
+    { key: "activeUsers" as const, label: "Пользователи", color: SERIES[1] },
+    { key: "pageViews" as const, label: "Просмотры", color: SERIES[2] },
   ];
   for (const item of series) {
     doc.strokeColor(item.color).lineWidth(1.4);
@@ -317,14 +317,14 @@ function drawTrend(doc: PDFDoc, daily: TimeseriesPoint[]) {
 }
 
 function drawDailyTable(doc: PDFDoc, data: WeeklyReportData) {
-  sectionTitle(doc, "Щоденна розбивка");
+  sectionTitle(doc, "Ежедневная разбивка");
   const columns: Column[] = [
     { label: "Дата", width: 120, align: "left" },
-    { label: "Користувачі", width: 70, align: "right" },
-    { label: "Сесії", width: 70, align: "right" },
-    { label: "Перегляди", width: 80, align: "right" },
-    { label: "Відмови", width: 70, align: "right" },
-    { label: "Залучення", width: 111, align: "right" },
+    { label: "Пользователи", width: 70, align: "right" },
+    { label: "Сессии", width: 70, align: "right" },
+    { label: "Просмотры", width: 80, align: "right" },
+    { label: "Отказы", width: 70, align: "right" },
+    { label: "Вовлечённость", width: 111, align: "right" },
   ];
   const rows = data.daily.map((point) => [
     weekdayLabel(point.key),
@@ -336,7 +336,7 @@ function drawDailyTable(doc: PDFDoc, data: WeeklyReportData) {
   ]);
   const totals = data.current;
   rows.push([
-    "Разом за тиждень",
+    "Итого за неделю",
     n(totals.totalUsers),
     n(totals.sessions),
     n(totals.pageViews),
@@ -348,52 +348,52 @@ function drawDailyTable(doc: PDFDoc, data: WeeklyReportData) {
 
 function weekdayLabel(dateYmd: string): string {
   const [year, month, day] = dateYmd.split("-").map(Number);
-  return new Intl.DateTimeFormat("uk-UA", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" }).format(
+  return new Intl.DateTimeFormat("ru-RU", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" }).format(
     new Date(Date.UTC(year, month - 1, day)),
   );
 }
 
 function shortWeekday(dateYmd: string): string {
   const [year, month, day] = dateYmd.split("-").map(Number);
-  return new Intl.DateTimeFormat("uk-UA", { weekday: "short", timeZone: "UTC" }).format(
+  return new Intl.DateTimeFormat("ru-RU", { weekday: "short", timeZone: "UTC" }).format(
     new Date(Date.UTC(year, month - 1, day)),
   );
 }
 
 function drawCountrySection(doc: PDFDoc, rows: BreakdownRow[]) {
-  sectionTitle(doc, "Трафік за країнами");
+  sectionTitle(doc, "Трафик по странам");
   if (rows.length === 0) return emptyNote(doc);
   drawBarChart(doc, rows.slice(0, 8).map((row) => ({ label: translateCountryLabel(row.label), value: row.sessions })));
-  drawBreakdownTable(doc, rows, ["Країна", "Користувачі", "Сесії", "Перегляди", "Відмови", "Залучення", "Частка"], translateCountryLabel);
+  drawBreakdownTable(doc, rows, ["Страна", "Пользователи", "Сессии", "Просмотры", "Отказы", "Вовлечённость", "Доля"], translateCountryLabel);
 }
 
 function drawDeviceSection(doc: PDFDoc, rows: BreakdownRow[]) {
-  sectionTitle(doc, "Трафік за пристроями");
+  sectionTitle(doc, "Трафик по устройствам");
   if (rows.length === 0) return emptyNote(doc);
   drawDonut(doc, rows.map((row) => ({ label: translateDeviceLabel(row.label), value: row.sessions })));
-  drawBreakdownTable(doc, rows, ["Пристрій", "Користувачі", "Сесії", "Перегляди", "Відмови", "Залучення", "Частка"], translateDeviceLabel);
+  drawBreakdownTable(doc, rows, ["Устройство", "Пользователи", "Сессии", "Просмотры", "Отказы", "Вовлечённость", "Доля"], translateDeviceLabel);
 }
 
 function drawSourceSection(doc: PDFDoc, rows: BreakdownRow[]) {
-  sectionTitle(doc, "Джерела трафіку");
+  sectionTitle(doc, "Источники трафика");
   if (rows.length === 0) return emptyNote(doc);
-  drawBreakdownTable(doc, rows, ["Джерело / канал", "Користувачі", "Сесії", "Перегляди", "Відмови", "Залучення", "Частка"], translateSourceLabel);
+  drawBreakdownTable(doc, rows, ["Источник / канал", "Пользователи", "Сессии", "Просмотры", "Отказы", "Вовлечённость", "Доля"], translateSourceLabel);
 }
 
 function drawCampaignSection(doc: PDFDoc, rows: BreakdownRow[]) {
-  sectionTitle(doc, "Ефективність кампаній");
-  drawBreakdownTable(doc, rows, ["Кампанія", "Користувачі", "Сесії", "Перегляди", "Відмови", "Залучення", "Частка"]);
+  sectionTitle(doc, "Эффективность кампаний");
+  drawBreakdownTable(doc, rows, ["Кампания", "Пользователи", "Сессии", "Просмотры", "Отказы", "Вовлечённость", "Доля"]);
 }
 
 function drawLandingSection(doc: PDFDoc, rows: BreakdownRow[]) {
-  sectionTitle(doc, "Топ посадкових сторінок");
+  sectionTitle(doc, "Топ посадочных страниц");
   if (rows.length === 0) return emptyNote(doc);
   const columns: Column[] = [
-    { label: "Посадкова сторінка", width: 200, align: "left" },
-    { label: "Користувачі", width: 80, align: "right" },
-    { label: "Сесії", width: 80, align: "right" },
-    { label: "Перегляди", width: 80, align: "right" },
-    { label: "Відмови", width: 81, align: "right" },
+    { label: "Посадочная страница", width: 200, align: "left" },
+    { label: "Пользователи", width: 80, align: "right" },
+    { label: "Сессии", width: 80, align: "right" },
+    { label: "Просмотры", width: 80, align: "right" },
+    { label: "Отказы", width: 81, align: "right" },
   ];
   drawStyledTable(
     doc,
@@ -409,23 +409,23 @@ function drawLandingSection(doc: PDFDoc, rows: BreakdownRow[]) {
 }
 
 function drawComparison(doc: PDFDoc, data: WeeklyReportData) {
-  sectionTitle(doc, "Порівняння з минулим тижнем");
+  sectionTitle(doc, "Сравнение с прошлой неделей");
   const columns: Column[] = [
-    { label: "Показник", width: 138, align: "left" },
-    { label: "Цей тиждень", width: 108, align: "right" },
-    { label: "Минулий тиждень", width: 108, align: "right" },
-    { label: "Різниця", width: 84, align: "right" },
-    { label: "Зміна", width: 85, align: "right" },
+    { label: "Показатель", width: 138, align: "left" },
+    { label: "Эта неделя", width: 108, align: "right" },
+    { label: "Прошлая неделя", width: 108, align: "right" },
+    { label: "Разница", width: 84, align: "right" },
+    { label: "Изменение", width: 85, align: "right" },
   ];
   drawStyledTable(doc, columns, [
-    compareRow("Користувачі", data.current.totalUsers, data.previous.totalUsers, "number"),
-    compareRow("Нові користувачі", data.current.newUsers, data.previous.newUsers, "number"),
-    compareRow("Сесії", data.current.sessions, data.previous.sessions, "number"),
-    compareRow("Перегляди сторінок", data.current.pageViews, data.previous.pageViews, "number"),
-    compareRow("Показник відмов", data.current.bounceRate, data.previous.bounceRate, "rate"),
-    compareRow("Рівень залучення", data.current.engagementRate, data.previous.engagementRate, "rate"),
-    compareRow("Середній час взаємодії", data.current.averageEngagementTime, data.previous.averageEngagementTime, "duration"),
-    compareRow("Вартість сесій, USD", data.trafficCost.sessionsCostUsd, data.trafficCost.previousSessionsCostUsd, "money"),
+    compareRow("Пользователи", data.current.totalUsers, data.previous.totalUsers, "number"),
+    compareRow("Новые пользователи", data.current.newUsers, data.previous.newUsers, "number"),
+    compareRow("Сессии", data.current.sessions, data.previous.sessions, "number"),
+    compareRow("Просмотры страниц", data.current.pageViews, data.previous.pageViews, "number"),
+    compareRow("Показатель отказов", data.current.bounceRate, data.previous.bounceRate, "rate"),
+    compareRow("Уровень вовлечённости", data.current.engagementRate, data.previous.engagementRate, "rate"),
+    compareRow("Среднее время взаимодействия", data.current.averageEngagementTime, data.previous.averageEngagementTime, "duration"),
+    compareRow("Стоимость сессий, USD", data.trafficCost.sessionsCostUsd, data.trafficCost.previousSessionsCostUsd, "money"),
   ]);
 }
 
@@ -445,7 +445,7 @@ function compareRow(
           : (value: number) => n(value);
   if (kind === "rate") {
     const diff = current - previous;
-    return [label, format(current), format(previous), formatSignedPointsUk(diff), formatSignedPointsUk(diff)];
+    return [label, format(current), format(previous), formatSignedPointsRu(diff), formatSignedPointsRu(diff)];
   }
   const change = ratioChange(current, previous);
   const diff = current - previous;
@@ -460,8 +460,8 @@ function compareRow(
 }
 
 function drawInsights(doc: PDFDoc, insights: string[]) {
-  sectionTitle(doc, "Ключові висновки");
-  if (insights.length === 0) return emptyNote(doc, "Недостатньо даних для висновків.");
+  sectionTitle(doc, "Ключевые выводы");
+  if (insights.length === 0) return emptyNote(doc, "Недостаточно данных для выводов.");
   for (const insight of insights) {
     ensureSpace(doc, 28);
     const y = doc.y;
@@ -634,15 +634,15 @@ function drawChrome(doc: PDFDoc, data: WeeklyReportData, pageIndex: number, page
     doc.rect(0, 0, PAGE_WIDTH, 32).fill(NAVY);
     doc.rect(0, 32, PAGE_WIDTH, 3).fill(ACCENT);
     doc.restore();
-    doc.fillColor(WHITE).font(FONT).fontSize(8).text(`${data.site.name}  ·  тижневий звіт`, MARGIN, 12, {
+    doc.fillColor(WHITE).font(FONT).fontSize(8).text(`${data.site.name}  ·  еженедельный отчёт`, MARGIN, 12, {
       lineBreak: false,
     });
   }
   doc.fillColor(MUTED).font(FONT).fontSize(7);
-  doc.text(`Згенеровано в адмін-панелі  ·  ${data.site.domain}  ·  ${formatUkDateLabel(data.generatedAt.slice(0, 10))}`, MARGIN, PAGE_HEIGHT - 28, {
+  doc.text(`Сформировано в админ-панели  ·  ${data.site.domain}  ·  ${formatRuDateLabel(data.generatedAt.slice(0, 10))}`, MARGIN, PAGE_HEIGHT - 28, {
     lineBreak: false,
   });
-  const label = `Сторінка ${pageIndex + 1} з ${pageCount}`;
+  const label = `Страница ${pageIndex + 1} из ${pageCount}`;
   const width = doc.widthOfString(label);
   doc.text(label, PAGE_WIDTH - MARGIN - width, PAGE_HEIGHT - 28, { lineBreak: false });
 }
@@ -661,7 +661,7 @@ function sectionTitle(doc: PDFDoc, title: string) {
   doc.y = y + 26;
 }
 
-function emptyNote(doc: PDFDoc, text = "Немає даних аналітики за вибраний період") {
+function emptyNote(doc: PDFDoc, text = "Нет данных аналитики за выбранный период") {
   doc.fillColor(MUTED).font(FONT).fontSize(9).text(text, MARGIN, doc.y);
   doc.moveDown(0.8);
 }

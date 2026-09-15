@@ -313,7 +313,7 @@ export function RequirementsCheckPanel() {
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader title="Requirements Check" />
+        <CardHeader title="Проверка требований" />
         <div className="grid gap-3 md:grid-cols-2">
           <Field label="Website URL">
             <Input

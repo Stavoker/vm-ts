@@ -33,7 +33,7 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
     const query = selectedSiteId !== "all" ? `?siteId=${selectedSiteId}` : "";
     const response = await fetch(`/api/analytics/reports${query}`);
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Failed to load reports");
+    if (!response.ok) throw new Error(data.error || "Не удалось загрузить отчёты");
     setReports(data.reports as AnalyticsReportRow[]);
     setLoading(false);
   }, [selectedSiteId]);
@@ -43,7 +43,7 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
     fetch(`/api/analytics/reports${selectedSiteId !== "all" ? `?siteId=${selectedSiteId}` : ""}`)
       .then(async (response) => {
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Failed to load reports");
+        if (!response.ok) throw new Error(data.error || "Не удалось загрузить отчёты");
         if (!cancelled) {
           setReports(data.reports as AnalyticsReportRow[]);
           setLoading(false);
@@ -51,7 +51,7 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
       })
       .catch((err: unknown) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Error");
+          setError(err instanceof Error ? err.message : "Ошибка");
           setLoading(false);
         }
       });
@@ -70,11 +70,11 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
         body: JSON.stringify({ siteId: modalSiteId, startDate, endDate, packVisits: Number(packVisits) }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to generate report");
+      if (!response.ok) throw new Error(data.error || "Не удалось сформировать отчёт");
       setOpen(false);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(err instanceof Error ? err.message : "Ошибка");
     } finally {
       setBusy(false);
     }
@@ -86,26 +86,26 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
     try {
       const response = await fetch(`/api/analytics/reports/${id}/regenerate`, { method: "POST" });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to regenerate");
+      if (!response.ok) throw new Error(data.error || "Не удалось пересоздать отчёт");
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(err instanceof Error ? err.message : "Ошибка");
     } finally {
       setBusy(false);
     }
   }
 
   async function removeReport(id: string) {
-    if (!window.confirm("Видалити цей звіт? Цю дію не можна скасувати.")) return;
+    if (!window.confirm("Удалить этот отчёт? Это действие нельзя отменить.")) return;
     setBusy(true);
     setError(null);
     try {
       const response = await fetch(`/api/analytics/reports/${id}`, { method: "DELETE" });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Не вдалося видалити звіт");
+      if (!response.ok) throw new Error(data.error || "Не удалось удалить отчёт");
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Помилка");
+      setError(err instanceof Error ? err.message : "Ошибка");
     } finally {
       setBusy(false);
     }
@@ -114,7 +114,7 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
   return (
     <Card>
       <CardHeader
-        title="Тижневі звіти"
+        title="Еженедельные отчёты"
         extra={
           <Button
             type="button"
@@ -125,34 +125,34 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
             }}
             disabled={!sites.length}
           >
-            Згенерувати PDF
+            Сформировать PDF
           </Button>
         }
       />
       {error ? <Alert className="mb-3">{error}</Alert> : null}
       {loading ? (
-        <LoadingState label="Завантаження…" />
+        <LoadingState label="Загрузка…" />
       ) : reports.length === 0 ? (
-        <EmptyState title="Ще немає тижневих звітів." hint="Згенеруйте 7-денний PDF для підключеного сайту." />
+        <EmptyState title="Еженедельных отчётов пока нет." hint="Сформируйте 7-дневный PDF для подключённого сайта." />
       ) : (
         <div className="overflow-hidden rounded-[14px] border border-[var(--border)]">
           <div className="overflow-x-auto">
           <table className="ui-table">
             <thead>
               <tr>
-                <th className="w-[24%]">Звіт</th>
+                <th className="w-[24%]">Отчёт</th>
                 <th>Сайт</th>
-                <th>Період</th>
+                <th>Период</th>
                 <th>Пакет</th>
-                <th>Згенеровано</th>
+                <th>Создан</th>
                 <th>Статус</th>
-                <th className="text-right">Дії</th>
+                <th className="text-right">Действия</th>
               </tr>
             </thead>
             <tbody>
               {slice.map((report) => (
                 <tr key={report.id}>
-                  <td className="font-medium">{report.site_name || "Тижневий звіт"} · тижневий звіт</td>
+                  <td className="font-medium">{report.site_name || "Еженедельный отчёт"} · еженедельный отчёт</td>
                   <td className="whitespace-nowrap">{report.site_name || report.site_id}</td>
                   <td className="whitespace-nowrap tabular-nums">{formatPeriod(report.period_start, report.period_end)}</td>
                   <td className="whitespace-nowrap">{report.pack_label || "—"}</td>
@@ -175,18 +175,18 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
                       {report.status === "completed" ? (
                         <>
                           <a className="ui-btn ui-btn-ghost" href={`/api/analytics/reports/${report.id}/download`} target="_blank" rel="noreferrer">
-                            Переглянути
+                            Открыть
                           </a>
                           <a className="ui-btn ui-btn-secondary" href={`/api/analytics/reports/${report.id}/download`}>
-                            Завантажити
+                            Скачать
                           </a>
                         </>
                       ) : null}
                       <Button type="button" variant="ghost" disabled={busy} onClick={() => void regenerate(report.id)}>
-                        Перегенерувати
+                        Пересоздать
                       </Button>
                       <Button type="button" variant="danger" disabled={busy} onClick={() => void removeReport(report.id)}>
-                        Видалити
+                        Удалить
                       </Button>
                     </div>
                     {report.status === "failed" && report.error_message ? (
@@ -204,7 +204,7 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
 
       {open ? (
         <Modal onClose={() => setOpen(false)}>
-          <h3 className="text-[17px] font-semibold tracking-tight">Згенерувати тижневий PDF</h3>
+          <h3 className="text-[17px] font-semibold tracking-tight">Сформировать еженедельный PDF</h3>
           <div className="mt-4">
             <Field label="Сайт">
               <Select value={modalSiteId} onChange={(e) => setModalSiteId(e.target.value)}>
@@ -217,7 +217,7 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
             </Field>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3">
-            <Field label="Від">
+            <Field label="С">
               <Input
                 type="date"
                 value={startDate}
@@ -227,7 +227,7 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
                 }}
               />
             </Field>
-            <Field label="До">
+            <Field label="По">
               <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </Field>
           </div>
@@ -243,14 +243,14 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
             </Field>
           </div>
           <p className="mt-2 text-xs text-[var(--muted)]">
-            Період має бути рівно 7 днів. Ціна тижневого трафіку рахується за обраним пакетом.
+            Период должен быть ровно 7 дней. Стоимость недельного трафика считается по выбранному пакету.
           </p>
           <div className="mt-4 flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
-              Скасувати
+              Отмена
             </Button>
             <Button type="button" disabled={busy || !modalSiteId || !packVisits} onClick={() => void generate()}>
-              {busy ? "Генеруємо…" : "Згенерувати звіт"}
+              {busy ? "Формируем…" : "Сформировать отчёт"}
             </Button>
           </div>
         </Modal>
@@ -261,9 +261,9 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
 
 function statusLabel(status: AnalyticsReportRow["status"]) {
   if (status === "completed") return "Готово";
-  if (status === "failed") return "Помилка";
-  if (status === "generating") return "Генерується";
-  return "Очікує";
+  if (status === "failed") return "Ошибка";
+  if (status === "generating") return "Формируется";
+  return "Ожидает";
 }
 
 function formatPeriod(start: string, end: string) {
@@ -271,7 +271,7 @@ function formatPeriod(start: string, end: string) {
 }
 
 function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("uk-UA", {
+  return new Intl.DateTimeFormat("ru-RU", {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));

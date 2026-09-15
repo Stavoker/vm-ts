@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     }
     const pack = findPack(body.packVisits);
     if (!pack) {
-      throw new AnalyticsError("invalid_query", "Оберіть пакет Traffic Creator", 400);
+      throw new AnalyticsError("invalid_query", "Выберите пакет Traffic Creator", 400);
     }
     const report = await generateWeeklyReport({
       siteId: body.siteId,

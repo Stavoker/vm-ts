@@ -21,13 +21,13 @@ function row(label: string, sessions: number): BreakdownRow {
 }
 
 describe("weekly pdf report", () => {
-  it("names the file in Ukrainian", () => {
+  it("names the file in Russian", () => {
     expect(weeklyPdfFilename({ name: "Shop", url: "https://shop.example.com" }, "2026-09-01", "2026-09-07")).toBe(
-      "shop_example_com_tyzhnevyy_zvit_2026-09-01_2026-09-07.pdf",
+      "shop_example_com_ezhenedelnyy_otchet_2026-09-01_2026-09-07.pdf",
     );
   });
 
-  it("renders a PDF with Ukrainian traffic-cost content", async () => {
+  it("renders a PDF with Russian traffic-cost content", async () => {
     const current = {
       ...emptyOverview(),
       totalUsers: 8000,
@@ -66,7 +66,7 @@ describe("weekly pdf report", () => {
       sources: [row("google / organic", 8000)],
       campaigns: [],
       landingPages: [row("/", 5000)],
-      insights: ["Сесії зросли на 20.0% порівняно з минулим тижнем."],
+      insights: ["Сессии выросли на 20.0% по сравнению с прошлой неделей."],
       trafficCost: buildTrafficCostSummary({ packVisits: 600_000, sessions: 12000, users: 8000, previousSessions: 10000, previousUsers: 7000 }),
     };
 

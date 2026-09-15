@@ -111,7 +111,7 @@ export function PaymentsPanel() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-xl text-sm leading-relaxed text-[var(--muted)]">
-          Напоминания из Notion за 7 дней до даты в колонке «Істекає». Подгружаются все строки, даже без даты. Later —
+          Напоминания из Notion за 7 дней до даты в колонке «Істекає». Подгружаются все строки, даже без даты.
           каждый день, Payed — стоп до новой даты в Notion.
         </p>
         <Button type="button" onClick={() => void runNow()} disabled={running}>

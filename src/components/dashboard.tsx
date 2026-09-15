@@ -23,8 +23,40 @@ const STATUS_SET = new Set<SiteStatus>([
   "error",
 ]);
 
+const VALID_VIEWS = new Set<NavView>([
+  "sites",
+  "add",
+  "telegram",
+  "payments",
+  "requirements",
+  "analytics",
+  "traffic",
+  "online",
+  "offline",
+  "payment_required",
+  "blocked",
+  "error",
+]);
+
 function isStatusView(view: NavView): view is SiteStatus {
   return STATUS_SET.has(view as SiteStatus);
+}
+
+function readViewFromUrl(): NavView {
+  if (typeof window === "undefined") return "sites";
+  const raw = new URLSearchParams(window.location.search).get("view");
+  if (raw && VALID_VIEWS.has(raw as NavView)) return raw as NavView;
+  return "sites";
+}
+
+function writeViewToUrl(view: NavView) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (view === "sites") url.searchParams.delete("view");
+  else url.searchParams.set("view", view);
+  const next = `${url.pathname}${url.search}${url.hash}`;
+  if (`${window.location.pathname}${window.location.search}${window.location.hash}` === next) return;
+  window.history.replaceState(window.history.state, "", next);
 }
 
 function formatCountdown(ms: number) {
@@ -54,9 +86,22 @@ export function Dashboard() {
     () => Date.now() + CHECK_INTERVAL_MS,
   );
   const [now, setNow] = useState(() => Date.now());
-  const [view, setView] = useState<NavView>("sites");
+  const [view, setViewState] = useState<NavView>("sites");
   const [mobileOpen, setMobileOpen] = useState(false);
   const checkingRef = useRef(false);
+
+  const setView = useCallback((next: NavView) => {
+    setViewState(next);
+    writeViewToUrl(next);
+  }, []);
+
+  useEffect(() => {
+    const initial = readViewFromUrl();
+    if (initial !== "sites") setViewState(initial);
+    const onPopState = () => setViewState(readViewFromUrl());
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   const refreshSites = useCallback(async () => {
     setError(null);
@@ -168,9 +213,9 @@ export function Dashboard() {
         : view === "payments"
           ? "Оплаты Notion"
           : view === "requirements"
-            ? "Requirements Check"
+            ? "Проверка требований"
             : view === "analytics"
-              ? "Traffic Analytics"
+              ? "Аналитика трафика"
               : view === "traffic"
                 ? "Traffic Creator"
             : view === "sites"

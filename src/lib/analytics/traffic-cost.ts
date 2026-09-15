@@ -25,9 +25,9 @@ export const EXPERT_PRICE_MULTIPLIER = 1.4;
 
 /** Official Professional packs from traffic-creator.com/pricing (checked 2026-09). */
 export const TRAFFIC_CREATOR_PROFESSIONAL_PACKS: TrafficCreatorPack[] = [
-  pack(60_000, 19.95, "60 тис."),
-  pack(300_000, 59.95, "300 тис."),
-  pack(600_000, 114.95, "600 тис."),
+  pack(60_000, 19.95, "60 тыс."),
+  pack(300_000, 59.95, "300 тыс."),
+  pack(600_000, 114.95, "600 тыс."),
   pack(1_000_000, 189.95, "1 млн"),
   pack(3_000_000, 489.95, "3 млн"),
 ];

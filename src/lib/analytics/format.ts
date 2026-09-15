@@ -14,12 +14,15 @@ export function formatUsd(value: number, digits = 2): string {
   }).format(value)}`;
 }
 
-export function formatSignedPointsUk(change: number, digits = 1): string {
+export function formatSignedPointsRu(change: number, digits = 1): string {
   if (!Number.isFinite(change)) return "—";
   const points = change * 100;
   const sign = points > 0 ? "+" : "";
-  return `${sign}${points.toFixed(digits)} в.п.`;
+  return `${sign}${points.toFixed(digits)} п.п.`;
 }
+
+/** @deprecated Use formatSignedPointsRu */
+export const formatSignedPointsUk = formatSignedPointsRu;
 
 export function formatPercent(rate: number, digits = 1): string {
   if (!Number.isFinite(rate)) return "—";

@@ -110,10 +110,10 @@ export function Sidebar({
             Оплаты Notion
           </NavButton>
           <NavButton active={view === "requirements"} onClick={() => go("requirements")} icon={ShieldCheck}>
-            Requirements Check
+            Проверка требований
           </NavButton>
           <NavButton active={view === "analytics"} onClick={() => go("analytics")} icon={BarChart3}>
-            Traffic Analytics
+            Аналитика трафика
           </NavButton>
           <NavButton active={view === "traffic"} onClick={() => go("traffic")} icon={Activity}>
             Traffic Creator

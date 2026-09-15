@@ -1,5 +1,15 @@
 import { readJsonResponse } from "@/lib/fetch-json";
-import { parseBalance, parseCampaign, parseCampaignList, type TrafficBalance, type TrafficCampaign } from "./parse";
+import type { AnalyticsSite } from "@/lib/analytics/types";
+import { aggregateCreditUsage, campaignMatchesSite, daysToFetchForRange, emptyCreditUsage } from "./credits";
+import {
+  parseBalance,
+  parseCampaign,
+  parseCampaignCredits,
+  parseCampaignList,
+  type TrafficBalance,
+  type TrafficCampaign,
+  type TrafficCreditUsage,
+} from "./parse";
 
 const DEFAULT_BASE = "https://traffic-creator.com/api/v1/account";
 const ACCOUNT_KEY_PREFIX = "tgp_account_";
@@ -151,6 +161,72 @@ async function lookupOutboundIp(): Promise<string | null> {
 export async function getTrafficBalance(): Promise<TrafficBalance> {
   const payload = await tcFetch<unknown>("/balance");
   return parseBalance(payload);
+}
+
+export async function getCampaignAnalytics(id: string, days: number): Promise<unknown> {
+  const clamped = Math.min(90, Math.max(1, Math.round(days)));
+  return tcFetch<unknown>(`/campaigns/${encodeURIComponent(id)}/analytics?days=${clamped}`);
+}
+
+export async function getTrafficCreditUsage(input: {
+  startDate: string;
+  endDate: string;
+  label: string;
+  site?: Pick<AnalyticsSite, "name" | "domain" | "url"> | null;
+}): Promise<TrafficCreditUsage> {
+  const [balance, campaigns] = await Promise.all([getTrafficBalance(), listTrafficCampaigns()]);
+  const selected = input.site
+    ? campaigns.filter((campaign) => campaignMatchesSite(campaign, input.site!))
+    : campaigns;
+  const matched = selected.length > 0 ? selected : campaigns;
+  if (campaigns.length === 0) {
+    return { ...emptyCreditUsage(input.startDate, input.endDate, input.label), balanceCredits: balance.credits };
+  }
+
+  const days = daysToFetchForRange(input.startDate, input.endDate);
+  const settled = await Promise.allSettled(
+    matched.map(async (campaign) => {
+      const payload = await getCampaignAnalytics(campaign.id, days);
+      return parseCampaignCredits(payload, campaign);
+    }),
+  );
+
+  const parsed: ReturnType<typeof parseCampaignCredits>[] = [];
+  const partialErrors: TrafficCreditUsage["partialErrors"] = [];
+  settled.forEach((result, index) => {
+    const campaign = matched[index];
+    if (result.status === "fulfilled") {
+      parsed.push(result.value);
+      return;
+    }
+    const message = result.reason instanceof Error ? result.reason.message : "Failed";
+    partialErrors.push({
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      error: message,
+    });
+  });
+
+  const usage = aggregateCreditUsage({
+    campaigns: parsed,
+    balanceCredits: balance.credits,
+    startDate: input.startDate,
+    endDate: input.endDate,
+    label: input.label,
+    partialErrors,
+  });
+
+  if (input.site && selected.length === 0 && campaigns.length > 0) {
+    usage.partialErrors = [
+      {
+        campaignId: "site-filter",
+        campaignName: input.site.name,
+        error: "Кампания для сайта не найдена — показаны все кампании Traffic Creator.",
+      },
+      ...usage.partialErrors,
+    ];
+  }
+  return usage;
 }
 
 export async function listTrafficCampaigns(): Promise<TrafficCampaign[]> {

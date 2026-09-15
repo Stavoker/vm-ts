@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseBalance, parseCampaign, parseCampaignList } from "./parse";
+import { parseBalance, parseCampaign, parseCampaignCredits, parseCampaignList } from "./parse";
 
 describe("traffic creator parsers", () => {
   it("reads balance credits and per-tier remaining", () => {
@@ -65,22 +65,38 @@ describe("traffic creator parsers", () => {
     });
   });
 
-  it("unwraps nested campaign payloads", () => {
-    const campaign = parseCampaign({
-      data: {
-        campaign: {
-          campaign_id: "pw1",
-          title: "Playworldhub",
-          state: "paused",
-          url: "http://playworldhub.com",
+  it("parses campaign credit usage series from analytics payloads", () => {
+    const credits = parseCampaignCredits(
+      {
+        project: { id: "c1", name: "Horizon", status: "active", tier: "professional" },
+        totals: { visitors: 100 },
+        delivery_quality: { billed: 90 },
+        credits: {
+          total: 90,
+          per_day_avg: 45,
+          series: [
+            { date: "2026-09-14", credits: 40 },
+            { date: "2026-09-15", credits: 50 },
+          ],
+          tiers: [{ tier: "professional", label: "Professional", credits: 90, share: 100 }],
         },
       },
-    });
-    expect(campaign).toMatchObject({
-      id: "pw1",
-      name: "Playworldhub",
-      status: "paused",
-      url: "http://playworldhub.com",
-    });
+      { id: "c1", name: "Horizon", status: "active", traffic_tier: "professional" },
+    );
+    expect(credits.total).toBe(90);
+    expect(credits.series).toHaveLength(2);
+    expect(credits.tiers[0]).toMatchObject({ tier: "professional", share: 1 });
+  });
+
+  it("reads total_hits as delivered visits", () => {
+    expect(
+      parseCampaign({
+        id: "c2",
+        name: "PWH",
+        status: "active",
+        total_hits: 28865,
+        tier: "professional",
+      }),
+    ).toMatchObject({ delivered: 28865, traffic_tier: "professional" });
   });
 });

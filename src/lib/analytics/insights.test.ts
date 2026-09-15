@@ -71,8 +71,8 @@ describe("buildKeyInsights", () => {
 
     expect(insights.length).toBeGreaterThanOrEqual(3);
     expect(insights.length).toBeLessThanOrEqual(7);
-    expect(insights.some((item) => item.includes("Сесії зросли"))).toBe(true);
-    expect(insights.some((item) => item.includes("Франція"))).toBe(true);
-    expect(insights.some((item) => /найвищий показник відмов/i.test(item))).toBe(true);
+    expect(insights.some((item) => item.includes("Сессии выросли"))).toBe(true);
+    expect(insights.some((item) => item.includes("Франция"))).toBe(true);
+    expect(insights.some((item) => /самый высокий показатель отказов/i.test(item))).toBe(true);
   });
 });

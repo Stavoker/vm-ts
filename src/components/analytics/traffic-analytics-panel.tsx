@@ -3,6 +3,7 @@
 import {
   Activity,
   Clock3,
+  Coins,
   Eye,
   Heart,
   Layers,
@@ -13,10 +14,12 @@ import {
   UserPlus,
   UserRound,
   Users,
+  Wallet,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { DATE_PRESET_LABELS, type BounceDimension, type BreakdownRow, type ChartGranularity, type DatePreset, type OverviewMetrics, type RealtimeSnapshot, type SiteBreakdownRow, type TimeseriesPoint } from "@/lib/analytics/types";
 import { formatDuration, formatNumber, formatPercent } from "@/lib/analytics/format";
+import type { TrafficCreditUsage } from "@/lib/traffic-creator/parse";
 import type { Site } from "@/lib/types";
 import { StatCard } from "@/components/ui/stat-card";
 import { PAGE_SIZE, Pagination, usePagedList } from "@/components/ui/pagination";
@@ -83,6 +86,7 @@ export function TrafficAnalyticsPanel({ sites }: Props) {
   const [campaigns, setCampaigns] = useState<SectionState<{ rows: BreakdownRow[] }>>(emptySection);
   const [landing, setLanding] = useState<SectionState<{ rows: BreakdownRow[] }>>(emptySection);
   const [bounce, setBounce] = useState<SectionState<{ rows: BreakdownRow[] }>>(emptySection);
+  const [credits, setCredits] = useState<SectionState<TrafficCreditUsage>>(emptySection);
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
@@ -139,6 +143,27 @@ export function TrafficAnalyticsPanel({ sites }: Props) {
     void load("bounce", setBounce, `&bounceDimension=${bounceDimension}`);
     return () => controller.abort();
   }, [siteId, debouncedQuery, bounceDimension, loadJson]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setCredits({ loading: true, data: null, error: null });
+    void loadJson<{ usage: TrafficCreditUsage }>(
+      `/api/traffic-creator/credits?${debouncedQuery}&siteId=${encodeURIComponent(siteId)}`,
+      controller.signal,
+    )
+      .then((data) => {
+        setCredits({ loading: false, data: data.usage, error: null });
+      })
+      .catch((error) => {
+        if ((error as Error).name === "AbortError") return;
+        setCredits({
+          loading: false,
+          data: null,
+          error: error instanceof Error ? error.message : "Error",
+        });
+      });
+    return () => controller.abort();
+  }, [siteId, debouncedQuery, loadJson]);
 
   useEffect(() => {
     let cancelled = false;
@@ -519,6 +544,80 @@ export function TrafficAnalyticsPanel({ sites }: Props) {
             ])}
             onRowClick={(label) => setPage(label)}
           />
+        </SectionBody>
+      </Card>
+
+      <Card>
+        <CardHeader title="Traffic Creator — потраченные кредиты" />
+        <p className="mb-3 text-xs text-[var(--muted)]">
+          История billed credits из Account API за тот же период, что и фильтры GA4 выше.
+        </p>
+        {credits.data?.partialErrors?.length ? (
+          <Alert tone="warn" className="mb-3">
+            {credits.data.partialErrors.map((item) => item.error).join(" · ")}
+          </Alert>
+        ) : null}
+        <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            title="Потрачено за период"
+            value={formatNumber(credits.data?.totalSpent ?? 0)}
+            hint={credits.data?.range.label}
+            help="Сумма billed credits Traffic Creator за выбранный период."
+            loading={credits.loading}
+            icon={Coins}
+            tint="orange"
+          />
+          <StatCard
+            title="В среднем за день"
+            value={formatNumber(credits.data?.perDayAvg ?? 0, 1)}
+            help="Средний расход кредитов за календарный день в выбранном диапазоне."
+            loading={credits.loading}
+            icon={Activity}
+            tint="purple"
+          />
+          <StatCard
+            title="Остаток на балансе"
+            value={formatNumber(credits.data?.balanceCredits ?? Number.NaN)}
+            help="Текущие доступные кредиты в аккаунте Traffic Creator."
+            loading={credits.loading}
+            icon={Wallet}
+            tint="blue"
+          />
+          <StatCard
+            title="Кампании"
+            value={formatNumber(credits.data?.campaigns.length ?? 0)}
+            help="Сколько кампаний Traffic Creator вошло в итог."
+            loading={credits.loading}
+            icon={Layers}
+            tint="gray"
+          />
+        </div>
+        <SectionBody
+          state={credits}
+          empty={!credits.data?.series.length && !credits.data?.campaigns.length}
+        >
+          <div className="grid gap-4">
+            <div>
+              <h3 className="mb-2 text-sm font-medium text-[var(--text)]">По дням</h3>
+              <Table
+                columns={["Дата", "Кредиты"]}
+                rows={(credits.data?.series ?? []).map((row) => [row.date, formatNumber(row.credits)])}
+              />
+            </div>
+            <div>
+              <h3 className="mb-2 text-sm font-medium text-[var(--text)]">По кампаниям</h3>
+              <Table
+                columns={["Кампания", "Статус", "Tier", "Кредиты", "Визиты"]}
+                rows={(credits.data?.campaigns ?? []).map((row) => [
+                  row.campaignName,
+                  row.status,
+                  row.tier || "—",
+                  formatNumber(row.total),
+                  formatNumber(row.visitors),
+                ])}
+              />
+            </div>
+          </div>
         </SectionBody>
       </Card>
 
