@@ -1,4 +1,4 @@
-import { computeRates, viewsPerSession, weightedAverage } from "./format";
+import { computeRates, engagementTimePerUser, viewsPerSession } from "./format";
 import type { BreakdownRow, OverviewMetrics, SiteBreakdownRow, TimeseriesPoint } from "./types";
 
 export function emptyOverview(): OverviewMetrics {
@@ -12,7 +12,8 @@ export function emptyOverview(): OverviewMetrics {
     bounceRate: 0,
     engagementRate: 0,
     viewsPerSession: 0,
-    averageSessionDuration: 0,
+    userEngagementDuration: 0,
+    averageEngagementTime: 0,
   };
 }
 
@@ -23,9 +24,11 @@ export function metricsFromRow(
   const sessions = values.sessions ?? fallback?.sessions ?? 0;
   const engagedSessions = values.engagedSessions ?? fallback?.engagedSessions ?? 0;
   const pageViews = values.screenPageViews ?? fallback?.pageViews ?? 0;
+  const activeUsers = values.activeUsers ?? 0;
+  const userEngagementDuration = values.userEngagementDuration ?? fallback?.userEngagementDuration ?? 0;
   const rates = computeRates(sessions, engagedSessions);
   return {
-    activeUsers: values.activeUsers ?? 0,
+    activeUsers,
     totalUsers: values.totalUsers ?? 0,
     newUsers: values.newUsers ?? 0,
     sessions,
@@ -34,7 +37,8 @@ export function metricsFromRow(
     bounceRate: values.bounceRate ?? rates.bounceRate,
     engagementRate: values.engagementRate ?? rates.engagementRate,
     viewsPerSession: values.screenPageViewsPerSession ?? viewsPerSession(pageViews, sessions),
-    averageSessionDuration: values.averageSessionDuration ?? 0,
+    userEngagementDuration,
+    averageEngagementTime: engagementTimePerUser(userEngagementDuration, activeUsers),
   };
 }
 
@@ -42,9 +46,11 @@ export function aggregateOverviews(items: OverviewMetrics[]): OverviewMetrics {
   const sessions = items.reduce((sum, item) => sum + item.sessions, 0);
   const engagedSessions = items.reduce((sum, item) => sum + item.engagedSessions, 0);
   const pageViews = items.reduce((sum, item) => sum + item.pageViews, 0);
+  const activeUsers = items.reduce((sum, item) => sum + item.activeUsers, 0);
+  const userEngagementDuration = items.reduce((sum, item) => sum + item.userEngagementDuration, 0);
   const rates = computeRates(sessions, engagedSessions);
   return {
-    activeUsers: items.reduce((sum, item) => sum + item.activeUsers, 0),
+    activeUsers,
     totalUsers: items.reduce((sum, item) => sum + item.totalUsers, 0),
     newUsers: items.reduce((sum, item) => sum + item.newUsers, 0),
     sessions,
@@ -53,9 +59,8 @@ export function aggregateOverviews(items: OverviewMetrics[]): OverviewMetrics {
     bounceRate: rates.bounceRate,
     engagementRate: rates.engagementRate,
     viewsPerSession: viewsPerSession(pageViews, sessions),
-    averageSessionDuration: weightedAverage(
-      items.map((item) => ({ weight: item.sessions, value: item.averageSessionDuration })),
-    ),
+    userEngagementDuration,
+    averageEngagementTime: engagementTimePerUser(userEngagementDuration, activeUsers),
   };
 }
 

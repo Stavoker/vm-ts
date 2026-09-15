@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aggregateOverviews, mergeBreakdownRows } from "./aggregate";
+import { aggregateOverviews, mergeBreakdownRows, metricsFromRow } from "./aggregate";
 import { computeRates } from "./format";
 
 describe("analytics aggregation", () => {
@@ -15,7 +15,8 @@ describe("analytics aggregation", () => {
         bounceRate: 0.1,
         engagementRate: 0.9,
         viewsPerSession: 3,
-        averageSessionDuration: 100,
+        userEngagementDuration: 10_000,
+        averageEngagementTime: 100,
       },
       {
         activeUsers: 50,
@@ -27,7 +28,8 @@ describe("analytics aggregation", () => {
         bounceRate: 0.5,
         engagementRate: 0.5,
         viewsPerSession: 2,
-        averageSessionDuration: 50,
+        userEngagementDuration: 2_500,
+        averageEngagementTime: 50,
       },
     ]);
 
@@ -36,7 +38,25 @@ describe("analytics aggregation", () => {
     expect(merged.bounceRate).toBeCloseTo(0.4);
     expect(merged.engagementRate).toBeCloseTo(0.6);
     expect(merged.viewsPerSession).toBeCloseTo(2.25);
-    expect(merged.averageSessionDuration).toBeCloseTo((100 * 100 + 50 * 300) / 400);
+    expect(merged.userEngagementDuration).toBe(12_500);
+    expect(merged.averageEngagementTime).toBeCloseTo(12_500 / 150);
+  });
+
+  it("derives average engagement time from GA4 total duration and active users", () => {
+    const metrics = metricsFromRow({
+      activeUsers: 25_000,
+      totalUsers: 25_000,
+      newUsers: 20_000,
+      sessions: 25_830,
+      engagedSessions: 50,
+      screenPageViews: 26_000,
+      bounceRate: 0.998,
+      engagementRate: 0.002,
+      screenPageViewsPerSession: 1.01,
+      userEngagementDuration: 16_875_000,
+    });
+    expect(metrics.averageEngagementTime).toBe(675);
+    expect(metrics.userEngagementDuration).toBe(16_875_000);
   });
 
   it("merges country rows and recomputes shares", () => {

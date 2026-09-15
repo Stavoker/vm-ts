@@ -88,6 +88,11 @@ export function viewsPerSession(pageViews: number, sessions: number): number {
   return sessions > 0 ? pageViews / sessions : 0;
 }
 
+export function engagementTimePerUser(durationSeconds: number, activeUsers: number): number {
+  if (!Number.isFinite(durationSeconds) || !Number.isFinite(activeUsers) || activeUsers <= 0) return 0;
+  return durationSeconds / activeUsers;
+}
+
 export function weightedAverage(items: { weight: number; value: number }[]): number {
   const totalWeight = items.reduce((sum, item) => sum + item.weight, 0);
   if (totalWeight <= 0) return 0;

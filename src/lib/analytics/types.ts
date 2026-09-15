@@ -58,7 +58,8 @@ export type OverviewMetrics = {
   bounceRate: number;
   engagementRate: number;
   viewsPerSession: number;
-  averageSessionDuration: number;
+  userEngagementDuration: number;
+  averageEngagementTime: number;
 };
 
 export type TimeseriesPoint = {

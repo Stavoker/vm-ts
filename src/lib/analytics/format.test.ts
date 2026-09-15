@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDuration, formatPercent, formatUsd, parseRate } from "./format";
+import { engagementTimePerUser, formatDuration, formatPercent, formatUsd, parseRate } from "./format";
 
 describe("analytics formatters", () => {
   it("formats duration as HH:MM:SS", () => {
@@ -13,6 +13,12 @@ describe("analytics formatters", () => {
   it("normalizes GA4 rates that arrive as 0-1 or 0-100", () => {
     expect(parseRate("0.174")).toBeCloseTo(0.174);
     expect(parseRate("17.4")).toBeCloseTo(0.174);
+  });
+
+  it("computes average engagement time per active user", () => {
+    expect(engagementTimePerUser(16_875_000, 25_000)).toBe(675);
+    expect(formatDuration(675)).toBe("00:11:15");
+    expect(engagementTimePerUser(100, 0)).toBe(0);
   });
 
   it("formats USD costs", () => {

@@ -160,7 +160,7 @@ function drawKpiGrid(doc: PDFDoc, data: WeeklyReportData) {
     kpiCard("Перегляди сторінок", n(data.current.pageViews), data.current.pageViews, data.previous.pageViews),
     kpiCard("Показник відмов", formatPercent(data.current.bounceRate), data.current.bounceRate, data.previous.bounceRate, "bounceRate"),
     kpiCard("Рівень залучення", formatPercent(data.current.engagementRate), data.current.engagementRate, data.previous.engagementRate),
-    kpiCard("Середня тривалість сесії", formatDuration(data.current.averageSessionDuration), data.current.averageSessionDuration, data.previous.averageSessionDuration),
+    kpiCard("Середній час взаємодії", formatDuration(data.current.averageEngagementTime), data.current.averageEngagementTime, data.previous.averageEngagementTime),
     kpiCard("Перегляди / сесія", n(data.current.viewsPerSession, 2), data.current.viewsPerSession, data.previous.viewsPerSession),
   ];
   ensureSpace(doc, 220);
@@ -424,7 +424,7 @@ function drawComparison(doc: PDFDoc, data: WeeklyReportData) {
     compareRow("Перегляди сторінок", data.current.pageViews, data.previous.pageViews, "number"),
     compareRow("Показник відмов", data.current.bounceRate, data.previous.bounceRate, "rate"),
     compareRow("Рівень залучення", data.current.engagementRate, data.previous.engagementRate, "rate"),
-    compareRow("Середня тривалість сесії", data.current.averageSessionDuration, data.previous.averageSessionDuration, "duration"),
+    compareRow("Середній час взаємодії", data.current.averageEngagementTime, data.previous.averageEngagementTime, "duration"),
     compareRow("Вартість сесій, USD", data.trafficCost.sessionsCostUsd, data.trafficCost.previousSessionsCostUsd, "money"),
   ]);
 }

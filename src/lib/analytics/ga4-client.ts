@@ -32,7 +32,7 @@ export const OVERVIEW_METRICS = [
   "bounceRate",
   "engagementRate",
   "screenPageViewsPerSession",
-  "averageSessionDuration",
+  "userEngagementDuration",
 ] as const;
 
 export const BREAKDOWN_METRICS = [

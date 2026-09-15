@@ -37,7 +37,7 @@ describe("weekly pdf report", () => {
       bounceRate: 0.18,
       engagementRate: 0.82,
       viewsPerSession: 2,
-      averageSessionDuration: 90,
+      averageEngagementTime: 90,
     };
     const data: WeeklyReportData = {
       site: {

@@ -46,7 +46,7 @@ const KPI_HELP: Record<string, string> = {
   bounce: "Percentage of sessions that were not engaged sessions.",
   engagement: "Percentage of engaged sessions.",
   vps: "Average page/screen views per session.",
-  duration: "Average session duration reported by GA4.",
+  duration: "Average engagement time per active user from GA4, same metric as in the GA4 snapshot.",
 };
 
 export function TrafficAnalyticsPanel({ sites }: Props) {
@@ -292,7 +292,7 @@ export function TrafficAnalyticsPanel({ sites }: Props) {
         <StatCard title="Bounce Rate" value={formatPercent(metrics?.bounceRate ?? 0)} help={KPI_HELP.bounce} loading={overview.loading} error={overview.error} icon={TrendingDown} tint="orange" />
         <StatCard title="Engagement Rate" value={formatPercent(metrics?.engagementRate ?? 0)} help={KPI_HELP.engagement} loading={overview.loading} error={overview.error} icon={Heart} tint="green" />
         <StatCard title="Views / Session" value={formatNumber(metrics?.viewsPerSession ?? 0, 2)} help={KPI_HELP.vps} loading={overview.loading} error={overview.error} icon={Layers} tint="gray" />
-        <StatCard title="Avg Session / Engagement Time" value={formatDuration(metrics?.averageSessionDuration ?? 0)} help={KPI_HELP.duration} loading={overview.loading} error={overview.error} icon={Clock3} tint="purple" />
+        <StatCard title="Avg Engagement Time" value={formatDuration(metrics?.averageEngagementTime ?? 0)} help={KPI_HELP.duration} loading={overview.loading} error={overview.error} icon={Clock3} tint="purple" />
       </div>
 
       {siteId === "all" && overview.data?.sites?.length ? (
