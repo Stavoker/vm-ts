@@ -65,6 +65,7 @@ export function AddSiteForm({ onCreated }: Props) {
           </Field>
           <Field label="URL">
             <Input required value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com" />
+            <p className="mt-1 text-xs text-[var(--muted)]">Сайт сразу появится в Контент-заводе.</p>
           </Field>
           <Field label="Заметки">
             <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Необязательно" />

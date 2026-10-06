@@ -5,3 +5,9 @@ export function daysUntil(dueDate: string | null): number | null {
   const due = Date.parse(`${dueDate}T00:00:00Z`);
   return Math.round((due - start) / 86_400_000);
 }
+
+export function reminderNeedsPayment(status: string, dueDate: string | null): boolean {
+  if (status === "payed" || status === "later") return false;
+  const left = daysUntil(dueDate);
+  return left != null && left <= 7;
+}

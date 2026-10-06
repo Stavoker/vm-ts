@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Menu } from "lucide-react";
 import { AddSiteForm } from "@/components/add-site-form";
 import { TrafficAnalyticsPanel } from "@/components/analytics/traffic-analytics-panel";
+import { ContentFactoryPanel } from "@/components/content-factory-panel";
 import { Sidebar, type NavView } from "@/components/sidebar";
 import { SitesTable } from "@/components/sites-table";
 import { PaymentsPanel } from "@/components/payments-panel";
@@ -12,6 +13,8 @@ import { TelegramPanel } from "@/components/telegram-panel";
 import { TrafficCreatorPanel } from "@/components/traffic-creator-panel";
 import { Alert, Button, LoadingState } from "@/components/ui/primitives";
 import { CHECK_INTERVAL_MS } from "@/lib/constants";
+import { reminderNeedsPayment } from "@/lib/reminders-client";
+import type { PaymentReminder } from "@/lib/reminder-types";
 import type { Site, SiteStatus } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
 
@@ -31,6 +34,7 @@ const VALID_VIEWS = new Set<NavView>([
   "requirements",
   "analytics",
   "traffic",
+  "content",
   "online",
   "offline",
   "payment_required",
@@ -74,10 +78,13 @@ const PAGE_SUBTITLE: Partial<Record<NavView, string>> = {
   requirements: "Автоматическая проверка требований сайта",
   analytics: "Трафик, источники и поведение пользователей",
   traffic: "Баланс и кампании Traffic Creator",
+  content: "Тексты и брендовые картинки для постов. Публикуете вручную.",
+  payment_required: "Сервисы и сайты, которым нужна оплата",
 };
 
 export function Dashboard() {
   const [sites, setSites] = useState<Site[]>([]);
+  const [duePayments, setDuePayments] = useState(0);
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +108,20 @@ export function Dashboard() {
     const onPopState = () => setViewState(readViewFromUrl());
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  const refreshPayments = useCallback(async () => {
+    try {
+      const response = await fetch("/api/reminders", { cache: "no-store" });
+      if (!response.ok) return;
+      const data = (await response.json()) as { reminders?: PaymentReminder[] };
+      const reminders = data.reminders ?? [];
+      setDuePayments(
+        reminders.filter((item) => reminderNeedsPayment(item.status, item.due_date)).length,
+      );
+    } catch {
+      // Sites still load if Notion reminders fail.
+    }
   }, []);
 
   const refreshSites = useCallback(async () => {
@@ -150,17 +171,20 @@ export function Dashboard() {
   useEffect(() => {
     const timer = setTimeout(() => {
       void refreshSites();
+      void refreshPayments();
     }, 0);
     return () => clearTimeout(timer);
-  }, [refreshSites]);
+  }, [refreshSites, refreshPayments]);
 
   useEffect(() => {
     const startup = setTimeout(() => {
       void refreshSites();
+      void refreshPayments();
     }, 1500);
 
     const interval = setInterval(() => {
       void refreshSites();
+      void refreshPayments();
     }, CHECK_INTERVAL_MS);
 
     const clock = setInterval(() => {
@@ -187,8 +211,9 @@ export function Dashboard() {
     for (const site of sites) {
       next[site.status] += 1;
     }
+    next.payment_required = duePayments;
     return next;
-  }, [sites]);
+  }, [sites, duePayments]);
 
   const visibleSites = useMemo(() => {
     if (
@@ -198,7 +223,8 @@ export function Dashboard() {
       view === "payments" ||
       view === "requirements" ||
       view === "analytics" ||
-      view === "traffic"
+      view === "traffic" ||
+      view === "content"
     ) {
       return sites;
     }
@@ -218,6 +244,8 @@ export function Dashboard() {
               ? "Аналитика трафика"
               : view === "traffic"
                 ? "Traffic Creator"
+              : view === "content"
+                ? "Контент-завод"
             : view === "sites"
             ? "Все сайты"
             : STATUS_LABELS[view];
@@ -233,7 +261,15 @@ export function Dashboard() {
       }).format(new Date(lastCheckAt))
     : null;
 
-  const showCheck = view !== "add" && view !== "telegram" && view !== "payments" && view !== "requirements" && view !== "analytics" && view !== "traffic";
+  const showCheck =
+    view !== "add" &&
+    view !== "telegram" &&
+    view !== "payments" &&
+    view !== "payment_required" &&
+    view !== "requirements" &&
+    view !== "analytics" &&
+    view !== "traffic" &&
+    view !== "content";
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -299,14 +335,19 @@ export function Dashboard() {
             />
           ) : view === "telegram" ? (
             <TelegramPanel />
-          ) : view === "payments" ? (
-            <PaymentsPanel />
+          ) : view === "payments" || view === "payment_required" ? (
+            <PaymentsPanel
+              dueOnly={view === "payment_required"}
+              onChanged={() => void refreshPayments()}
+            />
           ) : view === "requirements" ? (
             <RequirementsCheckPanel />
           ) : view === "analytics" ? (
             <TrafficAnalyticsPanel sites={sites} />
           ) : view === "traffic" ? (
             <TrafficCreatorPanel />
+          ) : view === "content" ? (
+            <ContentFactoryPanel sites={sites} />
           ) : loading ? (
             <LoadingState />
           ) : (
@@ -317,9 +358,11 @@ export function Dashboard() {
           view !== "add" &&
           view !== "telegram" &&
           view !== "payments" &&
+          view !== "payment_required" &&
           view !== "requirements" &&
           view !== "analytics" &&
           view !== "traffic" &&
+          view !== "content" &&
           isStatusView(view) ? (
             <p className="mt-4 text-xs text-[var(--muted)]">
               Показано {visibleSites.length} из {sites.length}

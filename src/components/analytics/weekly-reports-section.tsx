@@ -28,10 +28,10 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
   const [packVisits, setPackVisits] = useState(String(DEFAULT_PACK_VISITS));
   const { page, setPage, totalPages, slice, total } = usePagedList(reports);
 
-  const load = useCallback(async () => {
-    setError(null);
-    const query = selectedSiteId !== "all" ? `?siteId=${selectedSiteId}` : "";
-    const response = await fetch(`/api/analytics/reports${query}`);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setError(null);
+    const query = selectedSiteId !== "all" ? `?siteId=${encodeURIComponent(selectedSiteId)}` : "";
+    const response = await fetch(`/api/analytics/reports${query}`, { cache: "no-store" });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Не удалось загрузить отчёты");
     setReports(data.reports as AnalyticsReportRow[]);
@@ -40,25 +40,28 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/analytics/reports${selectedSiteId !== "all" ? `?siteId=${selectedSiteId}` : ""}`)
-      .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Не удалось загрузить отчёты");
-        if (!cancelled) {
-          setReports(data.reports as AnalyticsReportRow[]);
-          setLoading(false);
-        }
-      })
+    setLoading(true);
+    setPage(0);
+    load()
       .catch((err: unknown) => {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Ошибка");
           setLoading(false);
         }
       });
+    const timer = setInterval(() => {
+      void load(true).catch(() => undefined);
+    }, 15_000);
+    const onFocus = () => {
+      void load(true).catch(() => undefined);
+    };
+    window.addEventListener("focus", onFocus);
     return () => {
       cancelled = true;
+      clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
     };
-  }, [selectedSiteId]);
+  }, [load]);
 
   async function generate() {
     setBusy(true);
@@ -72,6 +75,7 @@ export function WeeklyReportsSection({ sites, selectedSiteId }: Props) {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Не удалось сформировать отчёт");
       setOpen(false);
+      setPage(0);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка");

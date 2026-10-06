@@ -1,4 +1,8 @@
 import { inclusiveDayCount } from "@/lib/analytics/timezone";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import { AnalyticsError } from "@/lib/analytics/errors";
 import { jsonError, jsonOk } from "@/lib/analytics/query";
 import { findPack } from "@/lib/analytics/traffic-cost";

@@ -22,6 +22,12 @@ export type Site = {
   ga4_property_id?: string | null;
   ga4_measurement_id?: string | null;
   ga4_enabled?: boolean;
+  content_palette?: {
+    primary: string;
+    secondary: string;
+    accent: string;
+    background: string;
+  } | null;
 };
 
 export type SiteCheck = {

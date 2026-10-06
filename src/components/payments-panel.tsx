@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { daysUntil } from "@/lib/reminders-client";
+import { daysUntil, reminderNeedsPayment } from "@/lib/reminders-client";
 import type { PaymentReminder, ReminderKind, ReminderStatus } from "@/lib/reminder-types";
 import { Pagination, usePagedList } from "@/components/ui/pagination";
 import { Alert, Button, EmptyState, LoadingState } from "@/components/ui/primitives";
@@ -31,11 +31,16 @@ function displayStatus(item: PaymentReminder): { label: string; className: strin
 
   const left = daysUntil(item.due_date);
   if (left == null) return { label: "Нет даты", className: STATUS_CHIP.none };
-  if (left > 7) return { label: "Payed", className: STATUS_CHIP.ok };
-  return { label: "Ожидает", className: STATUS_CHIP.pending };
+  if (reminderNeedsPayment(item.status, item.due_date)) return { label: "Ожидает", className: STATUS_CHIP.pending };
+  return { label: "Payed", className: STATUS_CHIP.ok };
 }
 
-export function PaymentsPanel() {
+type Props = {
+  dueOnly?: boolean;
+  onChanged?: () => void;
+};
+
+export function PaymentsPanel({ dueOnly = false, onChanged }: Props) {
   const [reminders, setReminders] = useState<PaymentReminder[]>([]);
   const [filter, setFilter] = useState<"all" | ReminderKind | ReminderStatus>("all");
   const [loading, setLoading] = useState(true);
@@ -46,10 +51,11 @@ export function PaymentsPanel() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const response = await fetch("/api/reminders");
+      const response = await fetch("/api/reminders", { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Не удалось загрузить");
       setReminders(data.reminders as PaymentReminder[]);
+      onChanged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка");
     } finally {
@@ -98,9 +104,12 @@ export function PaymentsPanel() {
   }
 
   const visible = useMemo(() => {
-    if (filter === "all") return reminders;
-    return reminders.filter((item) => item.kind === filter || item.status === filter);
-  }, [reminders, filter]);
+    const base = dueOnly
+      ? reminders.filter((item) => reminderNeedsPayment(item.status, item.due_date))
+      : reminders;
+    if (filter === "all") return base;
+    return base.filter((item) => item.kind === filter || item.status === filter);
+  }, [reminders, filter, dueOnly]);
   const { page, setPage, totalPages, slice, total } = usePagedList(visible);
 
   useEffect(() => {
@@ -151,7 +160,7 @@ export function PaymentsPanel() {
         <div className="ui-table-wrap">
           {visible.length === 0 ? (
             <EmptyState
-              title="Нет записей"
+              title={dueOnly ? "Нет сервисов с оплатой в ближайшие 7 дней" : "Нет записей"}
               hint="Нажмите «Проверить Notion» после SQL-миграции."
             />
           ) : (

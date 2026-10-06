@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 
 export function PageIntro({
   title,
@@ -67,6 +67,10 @@ export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
 
 export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
   return <select {...props} className={`ui-select ${props.className || ""}`} />;
+}
+
+export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea {...props} className={`ui-textarea ${props.className || ""}`} />;
 }
 
 export function Field({

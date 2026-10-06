@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { parsePalette } from "@/lib/content-factory/palette";
 import { createServerSupabase } from "@/lib/supabase";
 import type { SiteStatus } from "@/lib/types";
 
@@ -32,6 +33,12 @@ export async function PATCH(request: Request, { params }: Params) {
       ga4_property_id?: string | null;
       ga4_measurement_id?: string | null;
       ga4_enabled?: boolean;
+      content_palette?: {
+        primary?: string;
+        secondary?: string;
+        accent?: string;
+        background?: string;
+      } | null;
     };
 
     const patch: Record<string, unknown> = {};
@@ -45,6 +52,22 @@ export async function PATCH(request: Request, { params }: Params) {
       patch.ga4_measurement_id = body.ga4_measurement_id?.trim() || null;
     }
     if (typeof body.ga4_enabled === "boolean") patch.ga4_enabled = body.ga4_enabled;
+    if ("content_palette" in body) {
+      if (body.content_palette === null) {
+        patch.content_palette = null;
+      } else {
+        const palette = parsePalette(body.content_palette);
+        if (!palette) {
+          return NextResponse.json({ error: "Укажите 4 цвета HEX: основной, второй, акцент, фон" }, { status: 400 });
+        }
+        patch.content_palette = {
+          primary: palette.primary,
+          secondary: palette.secondary,
+          accent: palette.accent,
+          background: palette.background,
+        };
+      }
+    }
     if (body.status) {
       if (!STATUSES.includes(body.status)) {
         return NextResponse.json({ error: "Неверный статус" }, { status: 400 });

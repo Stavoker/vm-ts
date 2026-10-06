@@ -71,7 +71,7 @@ function resolveFont(name: string): string {
     path.join(__dirname, "../../../public/fonts", name),
   ];
   const found = candidates.find((candidate) => fs.existsSync(candidate));
-  if (!found) throw new Error(`Не знайдено шрифт ${name} у public/fonts`);
+  if (!found) throw new Error(`Font ${name} was not found in public/fonts`);
   return found;
 }
 
@@ -363,8 +363,9 @@ function shortWeekday(dateYmd: string): string {
 function drawCountrySection(doc: PDFDoc, rows: BreakdownRow[]) {
   sectionTitle(doc, "Трафик по странам");
   if (rows.length === 0) return emptyNote(doc);
-  drawBarChart(doc, rows.slice(0, 8).map((row) => ({ label: translateCountryLabel(row.label), value: row.sessions })));
-  drawBreakdownTable(doc, rows, ["Страна", "Пользователи", "Сессии", "Просмотры", "Отказы", "Вовлечённость", "Доля"], translateCountryLabel);
+  const visible = rows.slice(0, 12);
+  drawBarChart(doc, visible.map((row) => ({ label: translateCountryLabel(row.label), value: row.sessions })));
+  drawBreakdownTable(doc, visible, ["Страна", "Пользователи", "Сессии", "Просмотры", "Отказы", "Вовлечённость", "Доля"], translateCountryLabel);
 }
 
 function drawDeviceSection(doc: PDFDoc, rows: BreakdownRow[]) {
@@ -505,7 +506,7 @@ function drawBreakdownTable(
 function drawStyledTable(doc: PDFDoc, columns: Column[], rows: string[][], options?: { footer?: boolean }) {
   const padded = padColumns(columns);
   const drawHeader = () => {
-    ensureSpace(doc, TABLE_HEADER_H + TABLE_ROW_H);
+    ensureSpace(doc, TABLE_HEADER_H + TABLE_ROW_H * 2);
     resetPdfTextState(doc);
     const y = doc.y;
     doc.save();
@@ -525,6 +526,7 @@ function drawStyledTable(doc: PDFDoc, columns: Column[], rows: string[][], optio
         width: labelWidth,
         height: TABLE_HEADER_H - 6,
         align: column.align,
+        lineBreak: true,
       });
       x += column.width;
     }
@@ -570,19 +572,35 @@ function padColumns(columns: Column[]): Column[] {
 
 function drawBarChart(doc: PDFDoc, rows: { label: string; value: number }[]) {
   if (rows.length === 0) return;
-  const height = rows.length * 18 + 8;
+  const rowH = 18;
+  const height = rows.length * rowH + 8;
   ensureSpace(doc, height + 8);
+  resetPdfTextState(doc);
+  const startY = doc.y;
   const max = Math.max(...rows.map((row) => row.value), 1);
-  const barLeft = MARGIN + 110;
-  const barWidth = CONTENT_WIDTH - 150;
+  const labelWidth = 118;
+  const valueWidth = 42;
+  const barLeft = MARGIN + labelWidth + 8;
+  const barMaxWidth = CONTENT_WIDTH - labelWidth - valueWidth - 16;
   rows.forEach((row, index) => {
-    const y = doc.y + index * 18;
-    doc.fillColor(MUTED).font(FONT).fontSize(7).text(truncate(row.label, 20), MARGIN, y + 1, { width: 104 });
-    const width = Math.max(4, (row.value / max) * barWidth);
-    doc.roundedRect(barLeft, y, width, 11, 2).fill("#bfdbfe");
-    doc.fillColor(NAVY).font(FONT).fontSize(7).text(n(row.value), barLeft + width + 6, y + 1);
+    const y = startY + index * rowH;
+    doc.fillColor(MUTED).font(FONT).fontSize(7).text(truncate(row.label, 22), MARGIN, y + 2, {
+      width: labelWidth,
+      height: rowH - 2,
+      lineBreak: false,
+    });
+    resetPdfTextState(doc);
+    const width = Math.max(4, (row.value / max) * barMaxWidth);
+    doc.roundedRect(barLeft, y + 2, width, 11, 2).fill("#bfdbfe");
+    doc.fillColor(NAVY).font(FONT).fontSize(7).text(n(row.value), barLeft + barMaxWidth + 6, y + 2, {
+      width: valueWidth,
+      align: "right",
+      lineBreak: false,
+    });
+    resetPdfTextState(doc);
   });
-  doc.y += height;
+  doc.x = MARGIN;
+  doc.y = startY + height;
 }
 
 function drawDonut(doc: PDFDoc, rows: { label: string; value: number }[]) {

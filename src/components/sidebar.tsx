@@ -9,6 +9,7 @@ import {
   BarChart3,
   CircleOff,
   CreditCard,
+  Factory,
   Globe,
   LogOut,
   Plus,
@@ -27,6 +28,7 @@ export type NavView =
   | "requirements"
   | "analytics"
   | "traffic"
+  | "content"
   | SiteStatus;
 
 type Props = {
@@ -117,6 +119,9 @@ export function Sidebar({
           </NavButton>
           <NavButton active={view === "traffic"} onClick={() => go("traffic")} icon={Activity}>
             Traffic Creator
+          </NavButton>
+          <NavButton active={view === "content"} onClick={() => go("content")} icon={Factory}>
+            Контент-завод
           </NavButton>
 
           <p className="mb-2 mt-7 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
