@@ -159,7 +159,8 @@ create policy "payment_reminders_all" on public.payment_reminders
 alter table public.sites
   add column if not exists ga4_property_id text,
   add column if not exists ga4_measurement_id text,
-  add column if not exists ga4_enabled boolean not null default false;
+  add column if not exists ga4_enabled boolean not null default false,
+  add column if not exists content_palette jsonb;
 
 create table if not exists public.analytics_reports (
   id uuid primary key default gen_random_uuid(),

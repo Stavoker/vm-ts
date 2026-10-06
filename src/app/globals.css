@@ -97,9 +97,25 @@ body {
 }
 
 .ui-input:focus,
-.ui-select:focus {
+.ui-select:focus,
+.ui-textarea:focus {
   border-color: rgba(0, 113, 227, 0.55);
   box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+.ui-textarea {
+  min-height: 92px;
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: rgba(255, 255, 255, 0.92);
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.45;
+  outline: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
 }
 
 .ui-btn {

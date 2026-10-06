@@ -110,8 +110,8 @@ export async function listAnalyticsReports(siteId?: string): Promise<AnalyticsRe
     .from("analytics_reports")
     .select("id, site_id, report_type, period_start, period_end, file_name, generated_at, generated_by, status, error_message, created_at, metadata_json, sites(name, url)")
     .eq("report_type", "weekly")
-  .order("created_at", { ascending: false })
-    .limit(100);
+    .order("created_at", { ascending: false })
+    .limit(1000);
   if (siteId && siteId !== "all") request = request.eq("site_id", siteId);
   const { data, error } = await request;
   if (error) throw new Error(error.message);
