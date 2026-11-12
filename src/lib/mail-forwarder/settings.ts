@@ -1,11 +1,10 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { ConfigError } from "@/lib/mail-forwarder/errors";
 import type { ForwarderSettings, Mailbox } from "@/lib/mail-forwarder/types";
 
 export const DEFAULT_ZOHO_ACCOUNTS_BASE_URL = "https://accounts.zoho.eu";
 export const DEFAULT_ZOHO_MAIL_BASE_URL = "https://mail.zoho.eu";
-export const DEFAULT_SQLITE_PATH = ".data/mail-forwarder.db";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const SECRET_FILE_KEYS = ["refresh_token", "access_token", "client_secret", "password"];
@@ -102,26 +101,6 @@ function boolEnv(name: string, fallback: boolean): boolean {
   throw new ConfigError(`${name} must be true or false`);
 }
 
-function canUseSqlitePath(filePath: string): boolean {
-  try {
-    if (existsSync(filePath)) return true;
-    mkdirSync(dirname(filePath), { recursive: true });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function sqlitePath(): string {
-  const fallback = resolve(DEFAULT_SQLITE_PATH);
-  const configured = env("SQLITE_PATH");
-  if (!configured) return fallback;
-  const resolved = resolve(configured);
-  if (canUseSqlitePath(resolved)) return resolved;
-  console.warn(`[mail-forwarder] SQLITE_PATH ${resolved} is not writable here; using ${fallback}`);
-  return fallback;
-}
-
 export function loadForwarderSettings(): ForwarderSettings {
   const sendMethod = env("SEND_METHOD", "gmail").toLowerCase();
   if (sendMethod !== "gmail" && sendMethod !== "smtp") {
@@ -183,7 +162,6 @@ export function loadForwarderSettings(): ForwarderSettings {
     initialImport: boolEnv("INITIAL_IMPORT", false),
     maxMessagesPerPoll: intEnv("MAX_MESSAGES_PER_POLL", 50, 1, 500),
     maxMessageBytes: intEnv("MAX_MESSAGE_BYTES", 20_000_000, 100_000, 25_000_000),
-    sqlitePath: sqlitePath(),
   };
 }
 

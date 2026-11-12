@@ -22,7 +22,7 @@ type Status = {
   error?: string;
   destinationEmail?: string;
   sendMethod?: string;
-  sqlitePath: string;
+  storage?: string;
   pollIntervalSeconds?: number;
   lastPollAt?: string | null;
   mailboxCount?: number;

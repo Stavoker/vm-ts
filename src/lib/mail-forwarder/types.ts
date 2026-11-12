@@ -75,7 +75,6 @@ export type ForwarderSettings = {
   initialImport: boolean;
   maxMessagesPerPoll: number;
   maxMessageBytes: number;
-  sqlitePath: string;
 };
 
 export type PollMailboxResult = {

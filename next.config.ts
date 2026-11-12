@@ -12,7 +12,6 @@ const nextConfig: NextConfig = {
     "google-gax",
     "nodemailer",
     "mailparser",
-    "better-sqlite3",
   ],
   outputFileTracingIncludes: {
     "/api/analytics/reports/**": ["./public/fonts/**"],

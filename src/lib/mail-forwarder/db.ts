@@ -1,65 +1,14 @@
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
-import BetterSqlite3 from "better-sqlite3";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { ConfigError } from "@/lib/mail-forwarder/errors";
 import { Mutex } from "@/lib/mail-forwarder/mutex";
 import { env, httpsOrigin, zohoBaseUrls, zohoClientPair } from "@/lib/mail-forwarder/settings";
+import { createServiceSupabase } from "@/lib/supabase";
 import type { Mailbox, MailboxView, MessageSummary } from "@/lib/mail-forwarder/types";
 import { FORWARDER_TABLES, type ForwarderTableName } from "@/lib/mail-forwarder/types";
 import { redactText, sanitizeRow } from "@/lib/mail-forwarder/redact";
 
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS mailboxes (
-    email TEXT PRIMARY KEY,
-    company TEXT NOT NULL,
-    responsible TEXT NOT NULL,
-    enabled INTEGER NOT NULL DEFAULT 0,
-    refresh_token_env TEXT,
-    refresh_token TEXT,
-    zoho_client_id TEXT,
-    zoho_client_secret TEXT,
-    account_id TEXT,
-    zoho_accounts_base_url TEXT,
-    zoho_mail_base_url TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS processed_messages (
-    mailbox_email TEXT NOT NULL,
-    zoho_message_id TEXT NOT NULL,
-    original_message_id TEXT,
-    subject TEXT,
-    provider_message_id TEXT,
-    forwarded_at TEXT NOT NULL,
-    PRIMARY KEY (mailbox_email, zoho_message_id)
-);
-CREATE TABLE IF NOT EXISTS forward_attempts (
-    mailbox_email TEXT NOT NULL,
-    zoho_message_id TEXT NOT NULL,
-    folder_id TEXT NOT NULL,
-    subject TEXT,
-    from_address TEXT,
-    to_address TEXT,
-    received_time_ms INTEGER,
-    has_attachment INTEGER NOT NULL DEFAULT 0,
-    has_inline INTEGER NOT NULL DEFAULT 0,
-    attempts INTEGER NOT NULL DEFAULT 0,
-    last_error TEXT,
-    last_attempt_at TEXT NOT NULL,
-    PRIMARY KEY (mailbox_email, zoho_message_id)
-);
-CREATE TABLE IF NOT EXISTS mailbox_sync (
-    mailbox_email TEXT PRIMARY KEY,
-    initial_import_done INTEGER NOT NULL DEFAULT 0,
-    updated_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS forwarder_state (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-`;
-
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const STATE_PREFIX = "__forwarder__:";
 
 function utcNow(): string {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -72,6 +21,10 @@ function clip(value: string | null | undefined, limit: number): string | null {
 
 function asRecord(row: unknown): Record<string, unknown> {
   return { ...(row as Record<string, unknown>) };
+}
+
+function flag(value: unknown): boolean {
+  return value === true || value === 1 || value === "1";
 }
 
 function optionalZohoUrls(accounts: string, mail: string): { accounts: string | null; mail: string | null } {
@@ -113,82 +66,68 @@ function validateMailboxFields(input: {
   return { email, company, responsible, refreshTokenEnv, accountId };
 }
 
+function throwIfError(error: { message: string; code?: string } | null, fallback: string) {
+  if (!error) return;
+  if (error.code === "23505") throw new ConfigError("mailbox already exists");
+  throw new Error(error.message || fallback);
+}
+
 export class ForwarderDatabase {
-  private readonly conn: BetterSqlite3.Database;
   private readonly mutex = new Mutex();
 
-  constructor(path: string) {
-    mkdirSync(dirname(path), { recursive: true });
-    this.conn = new BetterSqlite3(path);
-    this.conn.exec("PRAGMA journal_mode=WAL");
-    this.conn.exec("PRAGMA busy_timeout=5000");
-    this.conn.exec(SCHEMA);
-    this.ensureColumns();
-  }
+  constructor(private readonly client: SupabaseClient = createServiceSupabase()) {}
 
-  close(): void {
-    this.conn.close();
-  }
+  close(): void {}
 
-  private ensureColumns(): void {
-    const rows = this.conn.prepare("PRAGMA table_info(mailboxes)").all() as Array<{ name: string }>;
-    const existing = new Set(rows.map((row) => row.name));
-    if (!existing.has("zoho_accounts_base_url")) this.conn.exec("ALTER TABLE mailboxes ADD COLUMN zoho_accounts_base_url TEXT");
-    if (!existing.has("zoho_mail_base_url")) this.conn.exec("ALTER TABLE mailboxes ADD COLUMN zoho_mail_base_url TEXT");
-    if (!existing.has("zoho_client_id")) this.conn.exec("ALTER TABLE mailboxes ADD COLUMN zoho_client_id TEXT");
-    if (!existing.has("zoho_client_secret")) this.conn.exec("ALTER TABLE mailboxes ADD COLUMN zoho_client_secret TEXT");
-  }
-
-  private run<T>(fn: () => T): Promise<T> {
+  private run<T>(fn: () => Promise<T>): Promise<T> {
     return this.mutex.run(fn);
   }
 
   seedMailboxesIfEmpty(mailboxes: Mailbox[]): Promise<number> {
-    return this.run(() => {
-      const countRow = this.conn.prepare("SELECT COUNT(*) AS n FROM mailboxes").get() as { n: number };
-      if (countRow.n) return 0;
+    return this.run(async () => {
+      const { count, error } = await this.client.from("mailboxes").select("email", { count: "exact", head: true });
+      throwIfError(error, "Failed to count mailboxes");
+      if (count) return 0;
       const now = utcNow();
-      const insert = this.conn.prepare(`
-        INSERT INTO mailboxes (
-          email, company, responsible, enabled, refresh_token_env,
-          refresh_token, account_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)
-      `);
-      for (const mailbox of mailboxes) {
-        insert.run(
-          mailbox.email.toLowerCase(),
-          mailbox.company,
-          mailbox.responsible,
-          mailbox.enabled ? 1 : 0,
-          mailbox.refreshTokenEnv,
-          mailbox.accountId,
-          now,
-          now,
-        );
-      }
+      const { error: insertError } = await this.client.from("mailboxes").insert(
+        mailboxes.map((mailbox) => ({
+          email: mailbox.email.toLowerCase(),
+          company: mailbox.company,
+          responsible: mailbox.responsible,
+          enabled: mailbox.enabled ? 1 : 0,
+          refresh_token_env: mailbox.refreshTokenEnv,
+          refresh_token: null,
+          account_id: mailbox.accountId,
+          created_at: now,
+          updated_at: now,
+        })),
+      );
+      throwIfError(insertError, "Failed to seed mailboxes");
       return mailboxes.length;
     });
   }
 
   saveZohoUrls(email: string, accountsBaseUrl: string, mailBaseUrl: string): Promise<void> {
-    return this.run(() => {
-      this.conn
-        .prepare("UPDATE mailboxes SET zoho_accounts_base_url = ?, zoho_mail_base_url = ?, updated_at = ? WHERE email = ?")
-        .run(accountsBaseUrl, mailBaseUrl, utcNow(), email.toLowerCase());
+    return this.run(async () => {
+      const { error } = await this.client
+        .from("mailboxes")
+        .update({ zoho_accounts_base_url: accountsBaseUrl, zoho_mail_base_url: mailBaseUrl, updated_at: utcNow() })
+        .eq("email", email.toLowerCase());
+      throwIfError(error, "Failed to save Zoho URLs");
     });
   }
 
   listMailboxes(): Promise<Mailbox[]> {
-    return this.run(() => {
-      const rows = this.conn
-        .prepare(
-          `SELECT email, company, responsible, enabled, refresh_token_env,
-                  refresh_token, zoho_client_id, zoho_client_secret, account_id,
-                  zoho_accounts_base_url, zoho_mail_base_url
-           FROM mailboxes ORDER BY company, email`,
+    return this.run(async () => {
+      const { data, error } = await this.client
+        .from("mailboxes")
+        .select(
+          "email, company, responsible, enabled, refresh_token_env, refresh_token, zoho_client_id, zoho_client_secret, account_id, zoho_accounts_base_url, zoho_mail_base_url",
         )
-        .all() as Array<Record<string, unknown>>;
-      return rows.map((row) => {
+        .order("company")
+        .order("email");
+      throwIfError(error, "Failed to list mailboxes");
+      return (data ?? []).map((row) => {
         const envName = String(row.refresh_token_env || "").trim();
         const stored = String(row.refresh_token || "").trim();
         const envToken = envName ? env(envName) : "";
@@ -203,7 +142,7 @@ export class ForwarderDatabase {
           responsible: String(row.responsible),
           refreshToken: token,
           refreshTokenEnv: envName,
-          enabled: Boolean(row.enabled),
+          enabled: flag(row.enabled),
           accountId: row.account_id ? String(row.account_id) : null,
           zohoClientId: String(row.zoho_client_id || "").trim() || pair.clientId,
           zohoClientSecret: String(row.zoho_client_secret || "").trim() || pair.clientSecret,
@@ -215,31 +154,31 @@ export class ForwarderDatabase {
   }
 
   listMailboxViews(): Promise<MailboxView[]> {
-    return this.run(() => {
-      const rows = this.conn
-        .prepare(
-          `SELECT email, company, responsible, enabled, refresh_token_env,
-                  refresh_token IS NOT NULL AND refresh_token != '' AS has_stored_token,
-                  zoho_client_id IS NOT NULL AND zoho_client_id != ''
-                    AND zoho_client_secret IS NOT NULL AND zoho_client_secret != '' AS has_client,
-                  account_id, zoho_accounts_base_url, zoho_mail_base_url
-           FROM mailboxes ORDER BY company, email`,
+    return this.run(async () => {
+      const { data, error } = await this.client
+        .from("mailboxes")
+        .select(
+          "email, company, responsible, enabled, refresh_token_env, refresh_token, zoho_client_id, zoho_client_secret, account_id, zoho_accounts_base_url, zoho_mail_base_url",
         )
-        .all() as Array<Record<string, unknown>>;
-      return rows.map((row) => {
+        .order("company")
+        .order("email");
+      throwIfError(error, "Failed to list mailbox views");
+      return (data ?? []).map((row) => {
         const envName = String(row.refresh_token_env || "");
         const envSet = Boolean(envName && env(envName));
+        const hasStoredToken = Boolean(String(row.refresh_token || "").trim());
+        const hasClient = Boolean(String(row.zoho_client_id || "").trim() && String(row.zoho_client_secret || "").trim());
         let tokenSource: MailboxView["tokenSource"] = "missing";
-        if (row.has_stored_token) tokenSource = "database";
+        if (hasStoredToken) tokenSource = "database";
         else if (envSet) tokenSource = "environment";
         return {
           email: String(row.email),
           company: String(row.company),
           responsible: String(row.responsible),
-          enabled: Boolean(row.enabled),
+          enabled: flag(row.enabled),
           refreshTokenEnv: envName,
           tokenSource,
-          hasClient: Boolean(row.has_client),
+          hasClient,
           accountId: row.account_id ? String(row.account_id) : "",
           zohoAccountsBaseUrl: String(row.zoho_accounts_base_url || ""),
           zohoMailBaseUrl: String(row.zoho_mail_base_url || ""),
@@ -261,35 +200,33 @@ export class ForwarderDatabase {
     zohoAccountsBaseUrl?: string;
     zohoMailBaseUrl?: string;
   }): Promise<void> {
-    return this.run(() => {
+    return this.run(async () => {
       const fields = validateMailboxFields(input);
       const urls = optionalZohoUrls(input.zohoAccountsBaseUrl || "", input.zohoMailBaseUrl || "");
       const now = utcNow();
-      const existing = this.conn.prepare("SELECT email FROM mailboxes WHERE email = ?").get(fields.email);
+      const { data: existing, error: existingError } = await this.client
+        .from("mailboxes")
+        .select("email")
+        .eq("email", fields.email)
+        .maybeSingle();
+      throwIfError(existingError, "Failed to check mailbox");
       if (existing) throw new ConfigError(`mailbox ${fields.email} already exists`);
-      this.conn
-        .prepare(
-          `INSERT INTO mailboxes (
-            email, company, responsible, enabled, refresh_token_env,
-            refresh_token, zoho_client_id, zoho_client_secret, account_id,
-            zoho_accounts_base_url, zoho_mail_base_url, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          fields.email,
-          fields.company,
-          fields.responsible,
-          input.enabled ? 1 : 0,
-          fields.refreshTokenEnv,
-          input.refreshToken?.trim() || null,
-          input.zohoClientId?.trim() || null,
-          input.zohoClientSecret?.trim() || null,
-          fields.accountId,
-          urls.accounts,
-          urls.mail,
-          now,
-          now,
-        );
+      const { error } = await this.client.from("mailboxes").insert({
+        email: fields.email,
+        company: fields.company,
+        responsible: fields.responsible,
+        enabled: input.enabled ? 1 : 0,
+        refresh_token_env: fields.refreshTokenEnv,
+        refresh_token: input.refreshToken?.trim() || null,
+        zoho_client_id: input.zohoClientId?.trim() || null,
+        zoho_client_secret: input.zohoClientSecret?.trim() || null,
+        account_id: fields.accountId,
+        zoho_accounts_base_url: urls.accounts,
+        zoho_mail_base_url: urls.mail,
+        created_at: now,
+        updated_at: now,
+      });
+      throwIfError(error, "Failed to add mailbox");
     });
   }
 
@@ -307,55 +244,59 @@ export class ForwarderDatabase {
     zohoAccountsBaseUrl?: string;
     zohoMailBaseUrl?: string;
   }): Promise<void> {
-    return this.run(() => {
+    return this.run(async () => {
       const fields = validateMailboxFields(input);
-      const current = this.conn.prepare("SELECT email FROM mailboxes WHERE email = ?").get(fields.email);
+      const { data: current, error: currentError } = await this.client
+        .from("mailboxes")
+        .select("email")
+        .eq("email", fields.email)
+        .maybeSingle();
+      throwIfError(currentError, "Failed to load mailbox");
       if (!current) throw new ConfigError(`mailbox ${fields.email} was not found`);
-      const params: unknown[] = [fields.company, fields.responsible, input.enabled ? 1 : 0, fields.refreshTokenEnv, fields.accountId];
-      let extra = "";
+      const patch: Record<string, unknown> = {
+        company: fields.company,
+        responsible: fields.responsible,
+        enabled: input.enabled ? 1 : 0,
+        refresh_token_env: fields.refreshTokenEnv,
+        account_id: fields.accountId,
+        updated_at: utcNow(),
+      };
       if (input.clearStoredToken) {
-        extra = ", refresh_token = NULL, zoho_client_id = NULL, zoho_client_secret = NULL";
+        patch.refresh_token = null;
+        patch.zoho_client_id = null;
+        patch.zoho_client_secret = null;
       } else {
-        if (input.refreshToken?.trim()) {
-          extra += ", refresh_token = ?";
-          params.push(input.refreshToken.trim());
-        }
-        if (input.zohoClientId?.trim()) {
-          extra += ", zoho_client_id = ?";
-          params.push(input.zohoClientId.trim());
-        }
-        if (input.zohoClientSecret?.trim()) {
-          extra += ", zoho_client_secret = ?";
-          params.push(input.zohoClientSecret.trim());
-        }
+        if (input.refreshToken?.trim()) patch.refresh_token = input.refreshToken.trim();
+        if (input.zohoClientId?.trim()) patch.zoho_client_id = input.zohoClientId.trim();
+        if (input.zohoClientSecret?.trim()) patch.zoho_client_secret = input.zohoClientSecret.trim();
       }
       if (input.zohoAccountsBaseUrl != null || input.zohoMailBaseUrl != null) {
         const urls = optionalZohoUrls(input.zohoAccountsBaseUrl || "", input.zohoMailBaseUrl || "");
-        extra += ", zoho_accounts_base_url = ?, zoho_mail_base_url = ?";
-        params.push(urls.accounts, urls.mail);
+        patch.zoho_accounts_base_url = urls.accounts;
+        patch.zoho_mail_base_url = urls.mail;
       }
-      params.push(utcNow(), fields.email);
-      this.conn
-        .prepare(
-          `UPDATE mailboxes SET company = ?, responsible = ?, enabled = ?, refresh_token_env = ?,
-           account_id = ?${extra}, updated_at = ? WHERE email = ?`,
-        )
-        .run(...params);
+      const { error } = await this.client.from("mailboxes").update(patch).eq("email", fields.email);
+      throwIfError(error, "Failed to update mailbox");
     });
   }
 
   deleteMailbox(email: string): Promise<void> {
-    return this.run(() => {
-      this.conn.prepare("DELETE FROM mailboxes WHERE email = ?").run(email.trim().toLowerCase());
+    return this.run(async () => {
+      const { error } = await this.client.from("mailboxes").delete().eq("email", email.trim().toLowerCase());
+      throwIfError(error, "Failed to delete mailbox");
     });
   }
 
   isProcessed(mailboxEmail: string, zohoMessageId: string): Promise<boolean> {
-    return this.run(() => {
-      const row = this.conn
-        .prepare("SELECT 1 FROM processed_messages WHERE mailbox_email = ? AND zoho_message_id = ?")
-        .get(mailboxEmail, zohoMessageId);
-      return row != null;
+    return this.run(async () => {
+      const { data, error } = await this.client
+        .from("processed_messages")
+        .select("zoho_message_id")
+        .eq("mailbox_email", mailboxEmail)
+        .eq("zoho_message_id", zohoMessageId)
+        .maybeSingle();
+      throwIfError(error, "Failed to check processed message");
+      return data != null;
     });
   }
 
@@ -366,137 +307,144 @@ export class ForwarderDatabase {
     subject: string;
     providerMessageId: string;
   }): Promise<void> {
-    return this.run(() => {
-      this.conn
-        .prepare(
-          `INSERT OR IGNORE INTO processed_messages (
-            mailbox_email, zoho_message_id, original_message_id, subject, provider_message_id, forwarded_at
-          ) VALUES (?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          input.mailboxEmail,
-          input.zohoMessageId,
-          clip(input.originalMessageId, 500),
-          clip(input.subject, 300),
-          clip(input.providerMessageId, 200),
-          utcNow(),
-        );
-      this.conn
-        .prepare("DELETE FROM forward_attempts WHERE mailbox_email = ? AND zoho_message_id = ?")
-        .run(input.mailboxEmail, input.zohoMessageId);
+    return this.run(async () => {
+      const { error } = await this.client.from("processed_messages").upsert(
+        {
+          mailbox_email: input.mailboxEmail,
+          zoho_message_id: input.zohoMessageId,
+          original_message_id: clip(input.originalMessageId, 500),
+          subject: clip(input.subject, 300),
+          provider_message_id: clip(input.providerMessageId, 200),
+          forwarded_at: utcNow(),
+        },
+        { onConflict: "mailbox_email,zoho_message_id", ignoreDuplicates: true },
+      );
+      throwIfError(error, "Failed to mark processed");
+      const { error: deleteError } = await this.client
+        .from("forward_attempts")
+        .delete()
+        .eq("mailbox_email", input.mailboxEmail)
+        .eq("zoho_message_id", input.zohoMessageId);
+      throwIfError(deleteError, "Failed to clear forward attempt");
     });
   }
 
   recordFailure(mailboxEmail: string, summary: MessageSummary, error: string): Promise<number> {
-    return this.run(() => {
+    return this.run(async () => {
       const message = redactText(error).replace(/[\r\n]/g, " ").slice(0, 500);
-      this.conn
-        .prepare(
-          `INSERT INTO forward_attempts (
-            mailbox_email, zoho_message_id, folder_id, subject, from_address, to_address,
-            received_time_ms, has_attachment, has_inline, attempts, last_error, last_attempt_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-          ON CONFLICT(mailbox_email, zoho_message_id) DO UPDATE SET
-            folder_id = excluded.folder_id,
-            subject = excluded.subject,
-            from_address = excluded.from_address,
-            to_address = excluded.to_address,
-            received_time_ms = excluded.received_time_ms,
-            has_attachment = excluded.has_attachment,
-            has_inline = excluded.has_inline,
-            attempts = forward_attempts.attempts + 1,
-            last_error = excluded.last_error,
-            last_attempt_at = excluded.last_attempt_at`,
-        )
-        .run(
-          mailboxEmail,
-          summary.messageId,
-          summary.folderId,
-          clip(summary.subject, 300),
-          clip(summary.fromAddress, 300),
-          clip(summary.toAddress, 500),
-          summary.receivedTimeMs,
-          summary.hasAttachment ? 1 : 0,
-          summary.hasInline ? 1 : 0,
-          message,
-          utcNow(),
-        );
-      const row = this.conn
-        .prepare("SELECT attempts FROM forward_attempts WHERE mailbox_email = ? AND zoho_message_id = ?")
-        .get(mailboxEmail, summary.messageId) as { attempts: number } | undefined;
-      return row?.attempts ?? 1;
+      const { data: existing, error: existingError } = await this.client
+        .from("forward_attempts")
+        .select("attempts")
+        .eq("mailbox_email", mailboxEmail)
+        .eq("zoho_message_id", summary.messageId)
+        .maybeSingle();
+      throwIfError(existingError, "Failed to load forward attempt");
+      const attempts = Number(existing?.attempts ?? 0) + 1;
+      const { error: upsertError } = await this.client.from("forward_attempts").upsert(
+        {
+          mailbox_email: mailboxEmail,
+          zoho_message_id: summary.messageId,
+          folder_id: summary.folderId,
+          subject: clip(summary.subject, 300),
+          from_address: clip(summary.fromAddress, 300),
+          to_address: clip(summary.toAddress, 500),
+          received_time_ms: summary.receivedTimeMs,
+          has_attachment: summary.hasAttachment ? 1 : 0,
+          has_inline: summary.hasInline ? 1 : 0,
+          attempts,
+          last_error: message,
+          last_attempt_at: utcNow(),
+        },
+        { onConflict: "mailbox_email,zoho_message_id" },
+      );
+      throwIfError(upsertError, "Failed to record forward attempt");
+      return attempts;
     });
   }
 
   initialImportDone(mailboxEmail: string): Promise<boolean> {
-    return this.run(() => {
-      const row = this.conn
-        .prepare("SELECT initial_import_done FROM mailbox_sync WHERE mailbox_email = ?")
-        .get(mailboxEmail.toLowerCase()) as { initial_import_done: number } | undefined;
-      return Boolean(row?.initial_import_done);
+    return this.run(async () => {
+      const { data, error } = await this.client
+        .from("mailbox_sync")
+        .select("initial_import_done")
+        .eq("mailbox_email", mailboxEmail.toLowerCase())
+        .maybeSingle();
+      throwIfError(error, "Failed to read mailbox sync");
+      return flag(data?.initial_import_done);
     });
   }
 
   markInitialImportDone(mailboxEmail: string): Promise<void> {
-    return this.run(() => {
-      this.conn
-        .prepare(
-          `INSERT INTO mailbox_sync (mailbox_email, initial_import_done, updated_at)
-           VALUES (?, 1, ?)
-           ON CONFLICT(mailbox_email) DO UPDATE SET initial_import_done = 1, updated_at = excluded.updated_at`,
-        )
-        .run(mailboxEmail.toLowerCase(), utcNow());
+    return this.run(async () => {
+      const { error } = await this.client.from("mailbox_sync").upsert(
+        {
+          mailbox_email: mailboxEmail.toLowerCase(),
+          initial_import_done: 1,
+          updated_at: utcNow(),
+        },
+        { onConflict: "mailbox_email" },
+      );
+      throwIfError(error, "Failed to mark initial import");
     });
   }
 
   listPending(mailboxEmail: string): Promise<MessageSummary[]> {
-    return this.run(() => {
-      const rows = this.conn
-        .prepare(
-          `SELECT zoho_message_id, folder_id, subject, from_address, to_address,
-                  received_time_ms, has_attachment, has_inline
-           FROM forward_attempts WHERE mailbox_email = ? ORDER BY received_time_ms ASC`,
-        )
-        .all(mailboxEmail) as Array<Record<string, unknown>>;
-      return rows.map((row) => ({
+    return this.run(async () => {
+      const { data, error } = await this.client
+        .from("forward_attempts")
+        .select("zoho_message_id, folder_id, subject, from_address, to_address, received_time_ms, has_attachment, has_inline")
+        .eq("mailbox_email", mailboxEmail)
+        .order("received_time_ms", { ascending: true });
+      throwIfError(error, "Failed to list pending forwards");
+      return (data ?? []).map((row) => ({
         messageId: String(row.zoho_message_id),
         folderId: String(row.folder_id),
         subject: String(row.subject || ""),
         fromAddress: String(row.from_address || ""),
         toAddress: String(row.to_address || ""),
         receivedTimeMs: row.received_time_ms == null ? null : Number(row.received_time_ms),
-        hasAttachment: Boolean(row.has_attachment),
-        hasInline: Boolean(row.has_inline),
+        hasAttachment: flag(row.has_attachment),
+        hasInline: flag(row.has_inline),
       }));
     });
   }
 
   getState(key: string): Promise<string | null> {
-    return this.run(() => {
-      const row = this.conn.prepare("SELECT value FROM forwarder_state WHERE key = ?").get(key) as { value: string } | undefined;
-      return row?.value ?? null;
+    return this.run(async () => {
+      const { data, error } = await this.client
+        .from("mailbox_sync")
+        .select("updated_at")
+        .eq("mailbox_email", `${STATE_PREFIX}${key}`)
+        .maybeSingle();
+      throwIfError(error, "Failed to read forwarder state");
+      return data?.updated_at ? String(data.updated_at) : null;
     });
   }
 
   setState(key: string, value: string): Promise<void> {
-    return this.run(() => {
-      this.conn
-        .prepare(
-          `INSERT INTO forwarder_state (key, value) VALUES (?, ?)
-           ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-        )
-        .run(key, value);
+    return this.run(async () => {
+      const { error } = await this.client.from("mailbox_sync").upsert(
+        {
+          mailbox_email: `${STATE_PREFIX}${key}`,
+          initial_import_done: 0,
+          updated_at: value,
+        },
+        { onConflict: "mailbox_email" },
+      );
+      throwIfError(error, "Failed to write forwarder state");
     });
   }
 
   listTable(name: ForwarderTableName, limit: number, offset: number): Promise<{ rows: Record<string, unknown>[]; total: number }> {
     if (!FORWARDER_TABLES.includes(name)) throw new ConfigError("unknown table");
-    return this.run(() => {
-      const totalRow = this.conn.prepare(`SELECT COUNT(*) AS n FROM ${name}`).get() as { n: number };
-      const rows = this.conn.prepare(`SELECT * FROM ${name} LIMIT ? OFFSET ?`).all(limit, offset) as unknown[];
+    return this.run(async () => {
+      const { count, error: countError } = await this.client.from(name).select("*", { count: "exact", head: true });
+      throwIfError(countError, "Failed to count table");
+      const { data, error } = await this.client.from(name).select("*").range(offset, offset + Math.max(limit, 1) - 1);
+      throwIfError(error, "Failed to list table");
       return {
-        total: totalRow.n,
-        rows: rows.map((row) => sanitizeRow(asRecord(row))),
+        total: count ?? 0,
+        rows: (data ?? []).map((row) => sanitizeRow(asRecord(row))),
       };
     });
   }
