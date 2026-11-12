@@ -1,0 +1,205 @@
+[
+  {
+    "email": "info@playworldhub.com",
+    "company": "Playworldhub",
+    "responsible": "Vlada",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN",
+    "enabled": true
+  },
+  {
+    "email": "info@lootland.com",
+    "company": "Lootland",
+    "responsible": "Vlada",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_INFO_LOOTLAND_COM",
+    "enabled": false
+  },
+  {
+    "email": "info@northverisltd.com",
+    "company": "Northveris",
+    "responsible": "Unassigned",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_INFO_NORTHVERISLTD_COM",
+    "enabled": false
+  },
+  {
+    "email": "support@northverisltd.com",
+    "company": "Northveris",
+    "responsible": "Unassigned",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_SUPPORT_NORTHVERISLTD_COM",
+    "enabled": false
+  },
+  {
+    "email": "legal@northverisltd.com",
+    "company": "Northveris",
+    "responsible": "Unassigned",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_LEGAL_NORTHVERISLTD_COM",
+    "enabled": false
+  },
+  {
+    "email": "business@spinveld.com",
+    "company": "Spinveld",
+    "responsible": "Unassigned",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_BUSINESS_SPINVELD_COM",
+    "enabled": false
+  },
+  {
+    "email": "admin@spinveld.com",
+    "company": "Spinveld",
+    "responsible": "Unassigned",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_ADMIN_SPINVELD_COM",
+    "enabled": false
+  },
+  {
+    "email": "info@spinveld.com",
+    "company": "Spinveld",
+    "responsible": "Unassigned",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_INFO_SPINVELD_COM",
+    "enabled": false
+  },
+  {
+    "email": "biz@horizon-skill.com",
+    "company": "Horizon Skill",
+    "responsible": "Vlada",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_BIZ_HORIZON_SKILL_COM",
+    "enabled": false
+  },
+  {
+    "email": "info@horizon-skill.com",
+    "company": "Horizon Skill",
+    "responsible": "Vlada",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_INFO_HORIZON_SKILL_COM",
+    "enabled": false
+  },
+  {
+    "email": "welcome@horizon-skill.com",
+    "company": "Horizon Skill",
+    "responsible": "Vlada",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_WELCOME_HORIZON_SKILL_COM",
+    "enabled": false
+  },
+  {
+    "email": "admin@horizon-skill.com",
+    "company": "Horizon Skill",
+    "responsible": "Vlada",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_ADMIN_HORIZON_SKILL_COM",
+    "enabled": false
+  },
+  {
+    "email": "general@hexoryltd.com",
+    "company": "Hexory",
+    "responsible": "Vlada",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_GENERAL_HEXORYLTD_COM",
+    "enabled": false
+  },
+  {
+    "email": "hr@hexoryltd.com",
+    "company": "Hexory",
+    "responsible": "Vlada",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_HR_HEXORYLTD_COM",
+    "enabled": false
+  },
+  {
+    "email": "finance@heroxyltd.com",
+    "company": "Heroxyltd",
+    "responsible": "Vlada",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_FINANCE_HEROXYLTD_COM",
+    "enabled": false
+  },
+  {
+    "email": "info@cardstreampayments.com",
+    "company": "Cardstream",
+    "responsible": "Nick",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_INFO_CARDSTREAMPAYMENTS_COM",
+    "enabled": false
+  },
+  {
+    "email": "admin@cardstreampayments.com",
+    "company": "Cardstream",
+    "responsible": "Nick",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_ADMIN_CARDSTREAMPAYMENTS_COM",
+    "enabled": false
+  },
+  {
+    "email": "legal@cardstreampayments.com",
+    "company": "Cardstream",
+    "responsible": "Nick",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_LEGAL_CARDSTREAMPAYMENTS_COM",
+    "enabled": false
+  },
+  {
+    "email": "support@cardstreampayments.com",
+    "company": "Cardstream",
+    "responsible": "Nick",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_SUPPORT_CARDSTREAMPAYMENTS_COM",
+    "enabled": false
+  },
+  {
+    "email": "welcome@cardstreampayments.com",
+    "company": "Cardstream",
+    "responsible": "Nick",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_WELCOME_CARDSTREAMPAYMENTS_COM",
+    "enabled": false
+  },
+  {
+    "email": "sl@todapay.com",
+    "company": "Todapay",
+    "responsible": "Nick",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_SL_TODAPAY_COM",
+    "enabled": false
+  },
+  {
+    "email": "info@generaai.org",
+    "company": "Generaai",
+    "responsible": "Unassigned",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_INFO_GENERAAI_ORG",
+    "enabled": false
+  },
+  {
+    "email": "info@avelnix.net",
+    "company": "Avelnix",
+    "responsible": "Unassigned",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_INFO_AVELNIX_NET",
+    "enabled": false
+  },
+  {
+    "email": "support@avelnix.net",
+    "company": "Avelnix",
+    "responsible": "Unassigned",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_SUPPORT_AVELNIX_NET",
+    "enabled": false
+  },
+  {
+    "email": "business@avelnix.net",
+    "company": "Avelnix",
+    "responsible": "Unassigned",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_BUSINESS_AVELNIX_NET",
+    "enabled": false
+  },
+  {
+    "email": "privacy@avelnix.net",
+    "company": "Avelnix",
+    "responsible": "Unassigned",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_PRIVACY_AVELNIX_NET",
+    "enabled": false
+  },
+  {
+    "email": "ceo@vionix.pl",
+    "company": "Vionix",
+    "responsible": "Nick",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_CEO_VIONIX_PL",
+    "enabled": false
+  },
+  {
+    "email": "info@norveonltd.com",
+    "company": "Norveon",
+    "responsible": "Unassigned",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_INFO_NORVEONLTD_COM",
+    "enabled": false
+  },
+  {
+    "email": "business@norveonltd.com",
+    "company": "Norveon",
+    "responsible": "Unassigned",
+    "refresh_token_env": "ZOHO_REFRESH_TOKEN_BUSINESS_NORVEONLTD_COM",
+    "enabled": false
+  }
+]

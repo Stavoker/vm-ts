@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { ConfigError } from "@/lib/mail-forwarder/errors";
 import type { ForwarderSettings, Mailbox } from "@/lib/mail-forwarder/types";
 
@@ -102,8 +102,24 @@ function boolEnv(name: string, fallback: boolean): boolean {
   throw new ConfigError(`${name} must be true or false`);
 }
 
+function canUseSqlitePath(filePath: string): boolean {
+  try {
+    if (existsSync(filePath)) return true;
+    mkdirSync(dirname(filePath), { recursive: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function sqlitePath(): string {
-  return resolve(env("SQLITE_PATH", DEFAULT_SQLITE_PATH));
+  const fallback = resolve(DEFAULT_SQLITE_PATH);
+  const configured = env("SQLITE_PATH");
+  if (!configured) return fallback;
+  const resolved = resolve(configured);
+  if (canUseSqlitePath(resolved)) return resolved;
+  console.warn(`[mail-forwarder] SQLITE_PATH ${resolved} is not writable here; using ${fallback}`);
+  return fallback;
 }
 
 export function loadForwarderSettings(): ForwarderSettings {
@@ -191,8 +207,10 @@ export function loadSeedMailboxes(): Mailbox[] {
       throw new ConfigError("MAILBOXES_JSON is not valid JSON");
     }
   }
-  const path = resolve(env("MAILBOXES_FILE", "config/mailboxes.json"));
-  if (!existsSync(path)) return [];
+  const configured = resolve(env("MAILBOXES_FILE", "config/mailboxes.json"));
+  const bundled = resolve("config/mailboxes.json");
+  const path = existsSync(configured) ? configured : existsSync(bundled) ? bundled : "";
+  if (!path) return [];
   try {
     return parseMailboxPayload(JSON.parse(readFileSync(path, "utf8")));
   } catch (error) {
