@@ -12,6 +12,7 @@ import {
   Factory,
   Globe,
   LogOut,
+  Mail,
   Plus,
   Send,
   ShieldCheck,
@@ -29,6 +30,7 @@ export type NavView =
   | "analytics"
   | "traffic"
   | "content"
+  | "mail"
   | SiteStatus;
 
 type Props = {
@@ -37,7 +39,6 @@ type Props = {
   counts: Record<"all" | SiteStatus, number>;
   mobileOpen: boolean;
   onCloseMobile: () => void;
-  nextRefreshLabel: string;
 };
 
 const STATUS_ITEMS: { id: SiteStatus; icon: LucideIcon }[] = [
@@ -62,7 +63,6 @@ export function Sidebar({
   counts,
   mobileOpen,
   onCloseMobile,
-  nextRefreshLabel,
 }: Props) {
   function go(next: NavView) {
     onNavigate(next);
@@ -123,6 +123,9 @@ export function Sidebar({
           <NavButton active={view === "content"} onClick={() => go("content")} icon={Factory}>
             Контент-завод
           </NavButton>
+          <NavButton active={view === "mail"} onClick={() => go("mail")} icon={Mail}>
+            Почта
+          </NavButton>
 
           <p className="mb-2 mt-7 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
             Статусы
@@ -142,11 +145,9 @@ export function Sidebar({
         </nav>
 
         <div className="border-t border-[var(--border)] px-4 py-4 text-[11px] leading-relaxed text-[var(--muted)]">
-          <div>Обновление данных: каждые 10 мин</div>
-          <div className="mt-1 tabular-nums">Следующее через {nextRefreshLabel}</div>
           <button
             type="button"
-            className="mt-3 inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--muted)] hover:text-[var(--text)]"
+            className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--muted)] hover:text-[var(--text)]"
             onClick={() => void logout()}
           >
             <LogOut size={13} />

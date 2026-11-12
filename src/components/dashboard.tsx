@@ -11,6 +11,7 @@ import { PaymentsPanel } from "@/components/payments-panel";
 import { RequirementsCheckPanel } from "@/components/requirements-check-panel";
 import { TelegramPanel } from "@/components/telegram-panel";
 import { TrafficCreatorPanel } from "@/components/traffic-creator-panel";
+import { MailForwarderPanel, MailPollTimer } from "@/components/mail-forwarder-panel";
 import { Alert, Button, LoadingState } from "@/components/ui/primitives";
 import { CHECK_INTERVAL_MS } from "@/lib/constants";
 import { reminderNeedsPayment } from "@/lib/reminders-client";
@@ -35,6 +36,7 @@ const VALID_VIEWS = new Set<NavView>([
   "analytics",
   "traffic",
   "content",
+  "mail",
   "online",
   "offline",
   "payment_required",
@@ -79,6 +81,7 @@ const PAGE_SUBTITLE: Partial<Record<NavView, string>> = {
   analytics: "Трафик, источники и поведение пользователей",
   traffic: "Баланс и кампании Traffic Creator",
   content: "Тексты и брендовые картинки для постов. Публикуете вручную.",
+  mail: "Ящики Zoho и пересылка на legal",
   payment_required: "Сервисы и сайты, которым нужна оплата",
 };
 
@@ -224,7 +227,8 @@ export function Dashboard() {
       view === "requirements" ||
       view === "analytics" ||
       view === "traffic" ||
-      view === "content"
+      view === "content" ||
+      view === "mail"
     ) {
       return sites;
     }
@@ -246,6 +250,8 @@ export function Dashboard() {
                 ? "Traffic Creator"
               : view === "content"
                 ? "Контент-завод"
+              : view === "mail"
+                ? "Почта"
             : view === "sites"
             ? "Все сайты"
             : STATUS_LABELS[view];
@@ -269,7 +275,8 @@ export function Dashboard() {
     view !== "requirements" &&
     view !== "analytics" &&
     view !== "traffic" &&
-    view !== "content";
+    view !== "content" &&
+    view !== "mail";
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -279,7 +286,6 @@ export function Dashboard() {
         counts={counts}
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
-        nextRefreshLabel={checking ? "сейчас…" : countdown}
       />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:ml-[272px]">
@@ -303,14 +309,18 @@ export function Dashboard() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className="hidden text-xs text-[var(--muted)] sm:inline">
-              {checking
-                ? "Идёт проверка…"
-                : lastCheckLabel
-                  ? `Последняя проверка: ${lastCheckLabel} · обновление через ${countdown}`
-                  : `Обновление данных через ${countdown}`}
-            </span>
+          <div className="flex shrink-0 items-center gap-3">
+            {view === "mail" ? (
+              <MailPollTimer />
+            ) : (
+              <span className="hidden text-xs text-[var(--muted)] sm:inline">
+                {checking
+                  ? "Идёт проверка…"
+                  : lastCheckLabel
+                    ? `Последняя проверка: ${lastCheckLabel} · обновление через ${countdown}`
+                    : `Обновление данных через ${countdown}`}
+              </span>
+            )}
             {showCheck ? (
               <Button
                 type="button"
@@ -348,6 +358,8 @@ export function Dashboard() {
             <TrafficCreatorPanel />
           ) : view === "content" ? (
             <ContentFactoryPanel sites={sites} />
+          ) : view === "mail" ? (
+            <MailForwarderPanel />
           ) : loading ? (
             <LoadingState />
           ) : (
@@ -363,6 +375,7 @@ export function Dashboard() {
           view !== "analytics" &&
           view !== "traffic" &&
           view !== "content" &&
+          view !== "mail" &&
           isStatusView(view) ? (
             <p className="mt-4 text-xs text-[var(--muted)]">
               Показано {visibleSites.length} из {sites.length}

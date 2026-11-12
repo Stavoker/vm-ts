@@ -137,14 +137,16 @@ export function TableShell({ children }: { children: ReactNode }) {
 export function Modal({
   children,
   onClose,
+  className = "max-w-md",
 }: {
   children: ReactNode;
   onClose?: () => void;
+  className?: string;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-[6px]">
       <button type="button" className="absolute inset-0" aria-label="Close" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-md ui-card ui-card-pad">{children}</div>
+      <div className={`relative z-10 w-full ${className} ui-card ui-card-pad`}>{children}</div>
     </div>
   );
 }

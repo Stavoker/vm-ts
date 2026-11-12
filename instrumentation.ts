@@ -3,7 +3,13 @@ export async function register() {
 
   if (process.env.VERCEL) {
     console.log("[monitor] Vercel detected: use Cron + Telegram webhook");
+    console.log("[mail-forwarder] Vercel detected: use Cron /api/mail-forwarder/poll every minute");
     return;
+  }
+
+  if (process.env.MAIL_FORWARDER_DISABLED !== "true") {
+    const { startMailForwarderLoop } = await import("./instrumentation.mail-forwarder");
+    await startMailForwarderLoop();
   }
 
   if (process.env.MONITOR_DISABLED === "true") {
