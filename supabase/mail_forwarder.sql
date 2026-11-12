@@ -53,3 +53,24 @@ alter table public.mailboxes enable row level security;
 alter table public.processed_messages enable row level security;
 alter table public.forward_attempts enable row level security;
 alter table public.mailbox_sync enable row level security;
+
+grant all on table public.mailboxes to anon, authenticated, service_role;
+grant all on table public.processed_messages to anon, authenticated, service_role;
+grant all on table public.forward_attempts to anon, authenticated, service_role;
+grant all on table public.mailbox_sync to anon, authenticated, service_role;
+
+drop policy if exists "mailboxes_all" on public.mailboxes;
+create policy "mailboxes_all" on public.mailboxes
+  for all using (true) with check (true);
+
+drop policy if exists "processed_messages_all" on public.processed_messages;
+create policy "processed_messages_all" on public.processed_messages
+  for all using (true) with check (true);
+
+drop policy if exists "forward_attempts_all" on public.forward_attempts;
+create policy "forward_attempts_all" on public.forward_attempts
+  for all using (true) with check (true);
+
+drop policy if exists "mailbox_sync_all" on public.mailbox_sync;
+create policy "mailbox_sync_all" on public.mailbox_sync
+  for all using (true) with check (true);

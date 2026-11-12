@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ConfigError } from "@/lib/mail-forwarder/errors";
 import { Mutex } from "@/lib/mail-forwarder/mutex";
 import { env, httpsOrigin, zohoBaseUrls, zohoClientPair } from "@/lib/mail-forwarder/settings";
-import { createServiceSupabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase";
 import type { Mailbox, MailboxView, MessageSummary } from "@/lib/mail-forwarder/types";
 import { FORWARDER_TABLES, type ForwarderTableName } from "@/lib/mail-forwarder/types";
 import { redactText, sanitizeRow } from "@/lib/mail-forwarder/redact";
@@ -69,13 +69,16 @@ function validateMailboxFields(input: {
 function throwIfError(error: { message: string; code?: string } | null, fallback: string) {
   if (!error) return;
   if (error.code === "23505") throw new ConfigError("mailbox already exists");
+  if (error.code === "42501") {
+    throw new Error("Supabase denied access to mail forwarder tables. Run supabase/mail_forwarder.sql in the SQL editor.");
+  }
   throw new Error(error.message || fallback);
 }
 
 export class ForwarderDatabase {
   private readonly mutex = new Mutex();
 
-  constructor(private readonly client: SupabaseClient = createServiceSupabase()) {}
+  constructor(private readonly client: SupabaseClient = createServerSupabase()) {}
 
   close(): void {}
 
