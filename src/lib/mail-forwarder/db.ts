@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import BetterSqlite3 from "better-sqlite3";
 import { ConfigError } from "@/lib/mail-forwarder/errors";
 import { Mutex } from "@/lib/mail-forwarder/mutex";
 import { env, httpsOrigin, zohoBaseUrls, zohoClientPair } from "@/lib/mail-forwarder/settings";
@@ -114,12 +114,12 @@ function validateMailboxFields(input: {
 }
 
 export class ForwarderDatabase {
-  private readonly conn: DatabaseSync;
+  private readonly conn: BetterSqlite3.Database;
   private readonly mutex = new Mutex();
 
   constructor(path: string) {
     mkdirSync(dirname(path), { recursive: true });
-    this.conn = new DatabaseSync(path);
+    this.conn = new BetterSqlite3(path);
     this.conn.exec("PRAGMA journal_mode=WAL");
     this.conn.exec("PRAGMA busy_timeout=5000");
     this.conn.exec(SCHEMA);
