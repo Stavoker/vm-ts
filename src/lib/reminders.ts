@@ -1,5 +1,6 @@
 import { REMINDER_DAYS_BEFORE } from "@/lib/constants";
 import { fetchNotionPayments } from "@/lib/notion";
+import { formatReminderPrice } from "@/lib/reminders-client";
 import type {
   NotionPaymentItem,
   PaymentReminder,
@@ -48,7 +49,7 @@ function kindLabel(kind: PaymentReminder["kind"] | NotionPaymentItem["kind"]) {
 }
 
 export function buildReminderText(
-  item: Pick<PaymentReminder, "company" | "target" | "pay_for" | "due_date" | "kind">,
+  item: Pick<PaymentReminder, "company" | "target" | "pay_for" | "price" | "due_date" | "kind">,
   extra?: string,
 ) {
   const left = daysUntil(item.due_date);
@@ -60,6 +61,7 @@ export function buildReminderText(
         : left === 0
           ? "сегодня"
           : `просрочено на ${Math.abs(left)} дн.`;
+  const price = formatReminderPrice(item.price);
 
   return [
     `💳 <b>Напоминание об оплате</b>`,
@@ -67,6 +69,7 @@ export function buildReminderText(
     `Компания: <b>${escapeHtml(item.company)}</b>`,
     `${kindLabel(item.kind)}: <b>${escapeHtml(item.target || "—")}</b>`,
     `Оплатить: <b>${escapeHtml(item.pay_for || "—")}</b>`,
+    `Сумма: <b>${escapeHtml(price || "—")}</b>`,
     `До: <b>${item.due_date ? formatDate(item.due_date) : "—"}</b> (${when})`,
     extra || "",
   ]
@@ -147,6 +150,7 @@ async function upsertFromNotion(items: NotionPaymentItem[]) {
       company: item.company,
       target: item.target,
       pay_for: item.payFor,
+      price: item.price,
       due_date: item.dueDate,
       status: dateChanged ? ("pending" as const) : (prev?.status ?? ("pending" as const)),
       ...(dateChanged ? { last_notified_at: null, payed_at: null } : {}),
@@ -157,6 +161,16 @@ async function upsertFromNotion(items: NotionPaymentItem[]) {
     onConflict: "notion_page_id",
     ignoreDuplicates: false,
   });
+
+  if (error && /price/i.test(error.message)) {
+    const withoutPrice = rows.map(({ price: _price, ...row }) => row);
+    const retry = await supabase.from("payment_reminders").upsert(withoutPrice, {
+      onConflict: "notion_page_id",
+      ignoreDuplicates: false,
+    });
+    if (retry.error) throw new Error(retry.error.message);
+    return;
+  }
 
   if (error) throw new Error(error.message);
 }

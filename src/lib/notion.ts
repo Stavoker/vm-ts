@@ -3,6 +3,7 @@ import type { NotionPaymentItem, ReminderKind } from "@/lib/reminder-types";
 const NOTION_VERSION = "2022-06-28";
 
 type NotionRichText = { plain_text?: string };
+type NotionFormula = { type?: string; number?: number | null; string?: string | null };
 type NotionProperty = {
   type: string;
   title?: NotionRichText[];
@@ -11,6 +12,8 @@ type NotionProperty = {
   url?: string | null;
   date?: { start?: string | null } | null;
   select?: { name?: string } | null;
+  number?: number | null;
+  formula?: NotionFormula | null;
 };
 
 type NotionPage = {
@@ -70,6 +73,44 @@ function getDate(
   }
   return null;
 }
+
+function parsePriceValue(raw: unknown): number | null {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw !== "string") return null;
+  const match = raw.replace(/\s/g, "").replace(",", ".").match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const value = Number(match[0]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function getNumber(
+  properties: Record<string, NotionProperty>,
+  names: string[],
+): number | null {
+  for (const name of names) {
+    const prop = properties[name];
+    if (!prop) continue;
+    if (prop.type === "number") {
+      const value = parsePriceValue(prop.number);
+      if (value != null) return value;
+    }
+    if (prop.type === "formula") {
+      const value = parsePriceValue(prop.formula?.number ?? prop.formula?.string);
+      if (value != null) return value;
+    }
+    if (prop.type === "rich_text") {
+      const value = parsePriceValue(plainText(prop.rich_text));
+      if (value != null) return value;
+    }
+    if (prop.type === "title") {
+      const value = parsePriceValue(plainText(prop.title));
+      if (value != null) return value;
+    }
+  }
+  return null;
+}
+
+const PRICE_PROPERTY_NAMES = ["Ціна", "Цена", "Price", "Cost", "Сума", "Сумма"];
 
 function domainFromEmails(raw: string | null): string | null {
   if (!raw) return null;
@@ -198,7 +239,7 @@ async function querySourceDatabase(sourceId: string): Promise<NotionPage[]> {
   return queryDatabase(childDatabaseId);
 }
 
-function mapPage(
+export function mapNotionPaymentPage(
   page: NotionPage,
   kind: ReminderKind,
 ): NotionPaymentItem | null {
@@ -210,11 +251,13 @@ function mapPage(
     "Оплатить до",
     "Оплатить До",
     "Оплатити до",
+    "Оплатити До",
     "Due date",
   ]);
+  const price = getNumber(properties, PRICE_PROPERTY_NAMES);
 
   const company =
-    getText(properties, ["Назва компанії", "Company name", "Name"]) ||
+    getText(properties, ["Назва компанії", "Company name", "Name", "Title"]) ||
     getTitle(properties);
   if (!company) return null;
 
@@ -225,7 +268,8 @@ function mapPage(
       kind,
       company,
       target: domainFromEmails(emails),
-      payFor: getText(properties, ["Price"]),
+      payFor: getText(properties, ["Метод оплаты", "Метод оплати", "Метод", "Method"]),
+      price,
       dueDate,
     };
   }
@@ -249,10 +293,11 @@ function mapPage(
       payFor: getText(properties, [
         "Метод оплаты",
         "Метод оплати",
-        "Price",
+        "Метод",
+        "Method",
         "Оплата",
-        "Cost",
       ]),
+      price,
       dueDate,
     };
   }
@@ -262,7 +307,8 @@ function mapPage(
     kind,
     company,
     target: getText(properties, ["Phone"]),
-    payFor: getText(properties, ["Price"]),
+    payFor: getText(properties, ["Метод оплаты", "Метод оплати", "Метод", "Method"]),
+    price,
     dueDate,
   };
 }
@@ -288,6 +334,6 @@ export async function fetchNotionPayments(): Promise<NotionPaymentItem[]> {
   );
 
   return batches
-    .flatMap(({ source, pages }) => pages.map((page) => mapPage(page, source.kind)))
+    .flatMap(({ source, pages }) => pages.map((page) => mapNotionPaymentPage(page, source.kind)))
     .filter((item): item is NotionPaymentItem => Boolean(item));
 }

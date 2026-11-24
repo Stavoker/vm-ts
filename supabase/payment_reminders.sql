@@ -41,6 +41,7 @@ create table if not exists public.payment_reminders (
   company text not null,
   target text,
   pay_for text,
+  price numeric,
   due_date date,
   status public.reminder_status not null default 'pending',
   last_notified_at timestamptz,
@@ -49,6 +50,9 @@ create table if not exists public.payment_reminders (
   updated_at timestamptz not null default now(),
   unique (notion_page_id)
 );
+
+alter table public.payment_reminders
+  add column if not exists price numeric;
 
 create index if not exists payment_reminders_status_due_idx
   on public.payment_reminders (status, due_date);

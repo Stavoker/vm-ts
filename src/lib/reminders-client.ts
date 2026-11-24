@@ -11,3 +11,8 @@ export function reminderNeedsPayment(status: string, dueDate: string | null): bo
   const left = daysUntil(dueDate);
   return left != null && left <= 7;
 }
+
+export function formatReminderPrice(amount: number | null | undefined): string | null {
+  if (amount == null || !Number.isFinite(Number(amount))) return null;
+  return `€${Number(amount).toFixed(2)}`;
+}
