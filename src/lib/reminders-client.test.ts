@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reminderNeedsPayment } from "./reminders-client";
+import { formatReminderPrice, reminderNeedsPayment } from "./reminders-client";
 
 describe("reminderNeedsPayment", () => {
   it("counts pending reminders due within 7 days or overdue", () => {
@@ -10,5 +10,11 @@ describe("reminderNeedsPayment", () => {
     expect(reminderNeedsPayment("payed", today)).toBe(false);
     expect(reminderNeedsPayment("later", today)).toBe(false);
     expect(reminderNeedsPayment("pending", null)).toBe(false);
+  });
+
+  it("formats Notion prices in euros", () => {
+    expect(formatReminderPrice(32)).toBe("€32.00");
+    expect(formatReminderPrice(19.4)).toBe("€19.40");
+    expect(formatReminderPrice(null)).toBeNull();
   });
 });

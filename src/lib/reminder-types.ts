@@ -8,6 +8,7 @@ export type PaymentReminder = {
   company: string;
   target: string | null;
   pay_for: string | null;
+  price: number | null;
   due_date: string | null;
   status: ReminderStatus;
   last_notified_at: string | null;
@@ -22,5 +23,6 @@ export type NotionPaymentItem = {
   company: string;
   target: string | null;
   payFor: string | null;
+  price: number | null;
   dueDate: string | null;
 };

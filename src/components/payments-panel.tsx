@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { daysUntil, reminderNeedsPayment } from "@/lib/reminders-client";
+import { daysUntil, formatReminderPrice, reminderNeedsPayment } from "@/lib/reminders-client";
 import type { PaymentReminder, ReminderKind, ReminderStatus } from "@/lib/reminder-types";
 import { Pagination, usePagedList } from "@/components/ui/pagination";
 import { Alert, Button, EmptyState, LoadingState } from "@/components/ui/primitives";
@@ -170,7 +170,8 @@ export function PaymentsPanel({ dueOnly = false, onChanged }: Props) {
                   <tr>
                     <th>Компания</th>
                     <th>Что</th>
-                    <th>Оплатить</th>
+                    <th>Метод</th>
+                    <th>Цена</th>
                     <th>До</th>
                     <th>Статус</th>
                     <th>Действия</th>
@@ -188,6 +189,7 @@ export function PaymentsPanel({ dueOnly = false, onChanged }: Props) {
                         </td>
                         <td>{item.target || "—"}</td>
                         <td>{item.pay_for || "—"}</td>
+                        <td className="whitespace-nowrap">{formatReminderPrice(item.price) || "—"}</td>
                         <td className="whitespace-nowrap">
                           {item.due_date ? formatDate(item.due_date) : "—"}
                           <div className="text-xs text-[var(--muted)]">
